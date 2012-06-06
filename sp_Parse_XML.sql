@@ -1,5 +1,5 @@
-﻿/*
-   sp_Parse_XML_v50e.sql
+/*
+   sp_Parse_XML_v51.sql
 
    Parses raw XMLZ XML Data contained in the ProjectXML Table into distinct rows
    of element names and values. 
@@ -14,6 +14,14 @@
    that order must be tested thoroughly before implementing them.
 
    Revision History: 
+   Version 51 - 2011-12-12 - Account for the possible condition of a null object among a set of like objects,
+                             which inadvertently causes the multiple value flag (Flag 8) to be set to the
+                             very next occurrence of the like object. Achieved by bringing in the previous
+                             ElementName prior to the null object. (I've been wanting to make this improvement
+                             for a long time; this gave me the opportunity to do it. It may add a moment of
+                             execution time for the parse process, but it's made up by eliminating a null object
+                             from being unnecessarily processed in the iteration process, as it requires a wasted
+                             recursion round-trip.)
    Version 50 - 2011-09-06 - Rename WorkUnitsEntry and ExpenseEntry to
                              CalculatedWorkUnits and CalculatedExpense.
                            - Rename StressThreatRating to StressBasedThreatRating.
@@ -208,12 +216,6 @@ BEGIN
 
       DECLARE CONTINUE HANDLER FOR NOT FOUND SET EOF = TRUE;
 
-      /* Trace/Debug Statement. This particular statement is executed unconditionally to
-         timestamp entry into the import process.
-      */
-
-      INSERT INTO Trace VALUES (0,"Begin Parse",CURRENT_TIME());
-
       OPEN c_xml;
 
       /* For every row in the XML Data stream ... */
@@ -400,6 +402,8 @@ BEGIN
 
                      IF pElementName = CONCAT("/",PrevElementName) THEN
                         DELETE FROM XMLData WHERE ID = PrevElementID;
+                        SELECT MAX(ID) INTO PrevElementID FROM XMLData;
+                        SELECT ElementName INTO PrevElementName FROM XMLData WHERE ID = PrevElementID;
                         ITERATE XLine;
                         
                      END IF;
@@ -447,7 +451,7 @@ BEGIN
                                          ELSE pElementFlags
                                      END
                                    );
-
+                                   
                      SET PrevElementID = LAST_INSERT_ID();
                      
                      IF pElementFlags & (2048|8192) = FALSE THEN

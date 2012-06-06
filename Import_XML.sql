@@ -166,6 +166,8 @@ CREATE TEMPORARY TABLE XMLData             -- Contains parsed XML Data in distin
 
 # TRUNCATE TABLE XMLData;
 
+INSERT INTO Trace VALUES (0,"Begin Parse",CURRENT_TIME());
+
 CALL sp_parse_xml();                     -- Parses raw XML contenst using "><" delimiters.
 
 /* Recursion in sp_iterate_xml() is accomplished by pushing and popping variable values
@@ -218,12 +220,15 @@ SET @Pool = FALSE;          -- Indicator that Objects are members of a Pool of O
 SET @recur = 0;             -- Recursion Level.
 SET @ProjectSummaryID = -1; -- Initialize ProjectSummaryID (to other than zero).
 
+INSERT INTO Trace VALUES (0,"Begin Iterate",CURRENT_TIME());
+
 CALL sp_Iterate_XML();
 
 /* Associate Strategies/Objectives/Threats with the Threats/Targets they address */
 
+INSERT INTO Trace VALUES (0,"Begin StrategyThreat",CURRENT_TIME());
+
 CALL sp_StrategyThreat(@ProjectSummaryID);
-/*                    (ProjectSummaryID) */
 
 /*
 DROP TABLE ProjectXML;

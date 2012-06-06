@@ -54,9 +54,9 @@ CREATE PROCEDURE sp_StrategyThreat (pProjectSummaryID INTEGER)
 StrThr:
 BEGIN
 
-      /* Trace/Debug statement */
-
-      INSERT INTO Trace VALUES (0,"Begin sp_StrategyThreat()",CURRENT_TIME());
+      IF  @Trace = TRUE THEN
+          INSERT INTO Trace VALUES (0,"Begin sp_StrategyThreat()",CURRENT_TIME());
+      END IF;
 
       DROP TABLE IF EXISTS t0;
       CREATE TEMPORARY TABLE t0
@@ -443,7 +443,9 @@ STLoop:
 
       /* Trace/Debug statement */
 
-      INSERT INTO Trace VALUES (0,"End sp_StrategyThreat()",CURRENT_TIME());
+      IF  @Trace = TRUE THEN
+          INSERT INTO Trace VALUES (0,"End sp_StrategyThreat()",CURRENT_TIME());
+      END IF;
 
 END StrThr $$
 

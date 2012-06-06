@@ -1,4 +1,4 @@
-﻿/*
+/*
    sp_Iterate_XML_v51c.sql
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
@@ -1484,11 +1484,11 @@ Child2:
          AND Str.ProjectSummaryID = @ProjectSummaryID;
 
 
-      /* Trace/Debug Statement. This particular statement is executed unconditionally to
-         timestamp completion of the import process.
-      */
+      /* Trace/Debug Statement. */
 
-      INSERT INTO TRACE VALUES (0,"End sp_Iterate_XML()",CURRENT_TIME());
+      IF  @Trace = TRUE THEN
+          INSERT INTO TRACE VALUES (0,"End sp_Iterate_XML()",CURRENT_TIME());
+      END IF;
 
 END $$
 
