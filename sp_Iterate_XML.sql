@@ -1,5 +1,5 @@
 /*
-   sp_Iterate_XML_v51c.sql
+   sp_Iterate_XML_v53.sql
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
 
@@ -17,6 +17,12 @@
         and the Greater Conservation Community.
 
    Revision History:
+   Version 53 - 2012-02-11 - Change the order of REPLACE parameters for the ANALYZE TABLE statements
+                             so that ThreatReductionResult gets REPLACEd with RESULT before 
+                             Threat gets REPLACEd with Cause.
+   Version 52 - 2011-12-23 - Add FiscalYear to DateUnitWorkUnits, DateUnitExpense.
+                           - Compute StartYear and StartMonth for Daily and Full Project 
+                             assignments/expenses.
    Version 51 - 2011-09-28 - Fixed bug introduced in Version 50? where any column value that 
                              contains "(" would become corrupted. (Oops!) The column value list is now
                              anchored with the anchor character (^) while it is being populated. The
@@ -266,11 +272,13 @@ BEGIN
                                      REPLACE(
                                         REPLACE(
                                            REPLACE(
-                                              REPLACE(ElementName,"Threat","Cause"),
-                                                      "BiodiversityTarget","Target"
-                                                  ),"HumanWelfareTarget","Target"
-                                               ),"IntermediateResult","Result"
-                                            ),"ThreatReductionResult","Result" 
+                                               REPLACE(
+                                                  REPLACE(ElementName,"IntermediateResult","Result"),
+                                                          "ThreatReductionResult","Result" 
+                                                      ),"BiodiversityTarget","Target"
+                                                   ),"HumanWelfareTarget","Target"
+                                                ),"Threat","Cause"
+                                             ),"CauseRating","ThreatRating"
                                          ),"Task","TaskActivityMethod"
                                       ) 
                       END
@@ -1314,23 +1322,38 @@ Child2:
 
       /* Create the components of Work Plan and Expense durations from their text elements. */
 
-      UPDATE DateUnitWorkUnits
+      UPDATE DateUnitWorkUnits, ProjectPlanning Plan
          SET StartYear =
              CASE WHEN WorkUnitsDateUnit IN ("Month","Quarter","Year")
-                  THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,
-                                                      '"',2
-                                                      ),'"',-1
-                                      )
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"\"",2),"\"",-1)
+                  WHEN WorkUnitsDateUnit = "Day"
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"-",1),"\"",-1)
+                  WHEN WorkUnitsDateUnit LIKE "Full%"
+                       THEN YEAR(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
+                                           THEN Plan.WorkPlanStartDate
+                                      WHEN Plan.StartDate IS NOT NULL
+                                      THEN Plan.StartDate
+                                      ELSE CURRENT_DATE()
+                                  END
+                                )
               END,
              StartMonth =
              CASE WHEN WorkUnitsDateUnit IN ("Month","Quarter","Year")
-                  THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,
-                                                       '"',4
-                                                      ),'"',-1
-                                      )
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"\"",4),"\"",-1)
+                  WHEN WorkUnitsDateUnit = "Day"
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"-",2),"-",-1)
+                  WHEN WorkUnitsDateUnit LIKE "Full%"
+                       THEN MONTH(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
+                                            THEN Plan.WorkPlanStartDate
+                                       WHEN Plan.StartDate IS NOT NULL
+                                       THEN Plan.StartDate
+                                       ELSE CURRENT_DATE()
+                                   END
+                                 )
               END
-       WHERE ProjectSummaryID = @ProjectSummaryID;
-
+       WHERE Plan.ProjectSummaryID = DateUnitWorkUnits.ProjectSummaryID
+         AND DateUnitWorkUnits.ProjectSummaryID = @ProjectSummaryID;
+         
       UPDATE DateUnitWorkUnits, ProjectPlanning Plan
          SET DateUnitWorkUnits.StartDate =
              CASE WHEN WorkUnitsDateUnit = "Day" THEN
@@ -1394,24 +1417,48 @@ Child2:
        WHERE Plan.ProjectSummaryID = DateUnitWorkUnits.ProjectSummaryID
          AND DateUnitWorkUnits.ProjectSummaryID = @ProjectSummaryID;
 
+      UPDATE DateUnitWorkUnits Units, ProjectPlanning Plan
+         SET FiscalYear = YEAR(CASE WHEN FiscalYearStart IS NULL
+                                    THEN EndDate
+                                    ELSE ADDDATE(EndDate,INTERVAL 12-FiscalYearStart+1 MONTH)
+                                END
+                              )
+       WHERE Plan.ProjectSummaryID = Units.ProjectSummaryID
+         AND Units.ProjectSummaryID = @ProjectSummaryID;
+         
 
-      UPDATE DateUnitExpense
+      UPDATE DateUnitExpense, ProjectPlanning Plan
          SET StartYear =
              CASE WHEN ExpensesDateUnit IN ("Month","Quarter","Year")
-                  THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,
-                                                       '"',2
-                                                      ),'"',-1
-                                      )
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"\"",2),"\"",-1)
+                  WHEN ExpensesDateUnit = "Day"
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"-",1),"\"",-1)
+                  WHEN ExpensesDateUnit LIKE "Full%"
+                       THEN YEAR(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
+                                           THEN Plan.WorkPlanStartDate
+                                      WHEN Plan.StartDate IS NOT NULL
+                                      THEN Plan.StartDate
+                                      ELSE CURRENT_DATE()
+                                  END
+                                )
               END,
              StartMonth =
              CASE WHEN ExpensesDateUnit IN ("Month","Quarter","Year")
-                  THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,
-                                                       '"',4
-                                                      ),'"',-1
-                                      )
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"\"",4),"\"",-1)
+                  WHEN ExpensesDateUnit = "Day"
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"-",2),"-",-1)
+                  WHEN ExpensesDateUnit LIKE "Full%"
+                       THEN MONTH(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
+                                            THEN Plan.WorkPlanStartDate
+                                       WHEN Plan.StartDate IS NOT NULL
+                                       THEN Plan.StartDate
+                                       ELSE CURRENT_DATE()
+                                   END
+                                 )
               END
-       WHERE ProjectSummaryID = @ProjectSummaryID;
-
+       WHERE Plan.ProjectSummaryID = DateUnitExpense.ProjectSummaryID
+         AND DateUnitExpense.ProjectSummaryID = @ProjectSummaryID;
+         
       UPDATE DateUnitExpense, ProjectPlanning Plan
          SET DateUnitExpense.StartDate =
              CASE WHEN ExpensesDateUnit = "Day" THEN
@@ -1474,6 +1521,15 @@ Child2:
               END
        WHERE Plan.ProjectSummaryID = DateUnitExpense.ProjectSummaryID
          AND DateUnitExpense.ProjectSummaryID = @ProjectSummaryID;
+         
+      UPDATE DateUnitExpense Exp, ProjectPlanning Plan
+         SET FiscalYear = YEAR(CASE WHEN FiscalYearStart IS NULL
+                                    THEN EndDate
+                                    ELSE ADDDATE(EndDate,INTERVAL 12-FiscalYearStart+1 MONTH)
+                                END
+                              )
+       WHERE Plan.ProjectSummaryID = Exp.ProjectSummaryID
+         AND Exp.ProjectSummaryID = @ProjectSummaryID;
 
 
       /* Populate Stress.StressRating (not yet populated by Miradi) */
