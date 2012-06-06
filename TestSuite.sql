@@ -1,5 +1,5 @@
 /*
-   TestSuite_v10.sql
+   TestSuite_v11.sql
    
    Test Suite for the Miradi Database.
 
@@ -11,7 +11,8 @@
         and the Greater Conservation Community.
    
    Revision History:
-   Version 10 - 2012-02-18 - Revised view names in accordance with Miradi Database V44 changes.
+   Version 11 - 2012-03-06 - Employed new/revised views contained in Miradi Database V44 changes.
+                           - Separated Effectiveness Monitoring from Results Monitoring.
    Version 9a - 2011-09-26 - Corrected joins to TaggedObjectSetFactor.
    Version 09 - 2011-09-06 - Changed corresponding with those documented for Database V 42a.
    Version 08 - 2011-08-24 - Changes corresponding with those documented for Database V 41 
@@ -472,8 +473,8 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 #CREATE VIEW vTargetViabilityIndicator AS
 SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        Tgt.Name,ViabilityMode,RATING(ViabilityStatus) AS "Viab Rating",
-       KeyEcologicalAttribute_Id,KEA.Name AS "KEA Name",KEA.Details AS "KEA Details",
-       CASE WHEN TgtKea.ID IS NOT NULL THEN KeaType(KEA.KeyEcologicalAttributeType) END AS "Type",
+       KeyAttribute_Id,KEA.Name AS "KEA Name",KEA.Details AS "KEA Details",
+       CASE WHEN KEA.ID IS NOT NULL THEN KeaType(KEA.KeyAttributeType) END AS "Type",
        KEA.Comments AS "KEA Comments",
        CASE WHEN Ind1.ID IS NOT NULL
             THEN Ind1.Indicator_id ELSE Ind2.Indicator_Id
@@ -483,22 +484,19 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        CASE WHEN Ind1.ID IS NOT NULL THEN Ind1.Comments ELSE Ind2.Comments END AS IndComments
   FROM ProjectSummary Summ, ExternalProjectID PID,
        Target Tgt
-          LEFT JOIN (TargetIndicator TgtInd, Indicator Ind1)
-                 ON (    Ind1.ID = TgtInd.IndicatorID
-                     AND TgtInd.TargetID = Tgt.ID
-                     AND Tgt.ViabilityMode = "Simple"
-                     AND Ind1.IsActive = TRUE
-                    )
-          LEFT JOIN (v_TargetKEA TgtKea, KeyEcologicalAttribute KEA)
-                 ON (    KEA.ID = TgtKea.KEAID
-                     AND TgtKea.TargetID = Tgt.ID
-                     AND Tgt.ViabilityMode = "KEA"
-                    )
-          LEFT JOIN (v_KEAIndicator KeaInd, Indicator Ind2)
-                 ON (    Ind2.ID = KeaInd.IndicatorID
-                     AND KeaInd.KEAID = KEA.ID
-                     AND Ind2.IsActive = TRUE
-                    )
+          LEFT JOIN v_TargetIndicator Ind1
+                 ON Ind1.TargetID = Tgt.ID
+                AND Tgt.ViabilityMode = "Simple"
+                AND Ind1.IsActive = TRUE
+
+          LEFT JOIN v_TargetKeyAttribute KEA
+                 ON KEA.TargetID = Tgt.ID
+                AND Tgt.ViabilityMode = "KEA"
+
+          LEFT JOIN v_KeyAttributeIndicator Ind2
+                 ON Ind2.KeyAttributeID = KEA.ID
+                AND Ind2.IsActive = TRUE
+
  WHERE PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
    AND Summ.ID = (SELECT MAX(ProjectSummaryID)
@@ -516,8 +514,8 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 #CREATE VIEW vTargetViabilityMeasurement AS
 SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        Tgt.Name AS TgtName,ViabilityMode,RATING(ViabilityStatus) AS "Viab Rating",
-       KeyEcologicalAttribute_Id,KEA.Name AS "KEA Name",KEA.Details AS "KEA Details",
-       CASE WHEN TgtKea.ID IS NOT NULL THEN KeaType(KEA.KeyEcologicalAttributeType) END AS "Type",
+       KeyAttribute_Id,KEA.Name AS "KEA Name",KEA.Details AS "KEA Details",
+       CASE WHEN KEA.ID IS NOT NULL THEN KeaType(KEA.KeyAttributeType) END AS "Type",
        KEA.Comments AS "KEA Comments",
        CASE WHEN Ind1.ID IS NOT NULL
             THEN Ind1.Indicator_id ELSE Ind2.Indicator_Id
@@ -539,28 +537,23 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 
   FROM ProjectSummary Summ, ExternalProjectID PID,
        Target Tgt
-          LEFT JOIN (TargetIndicator TgtInd, Indicator Ind1)
-                 ON (    Ind1.ID = TgtInd.IndicatorID
-                     AND TgtInd.TargetID = Tgt.ID
-                     AND Tgt.ViabilityMode = "Simple"
-                    )
-          LEFT JOIN (IndicatorMeasurement IndMeas, Measurement Meas)
-                 ON (    Meas.ID = IndMeas.MeasurementID
-                     AND IndMeas.IndicatorID = Ind1.ID
-                    )
-          LEFT JOIN (v_TargetKEA TgtKea, KeyEcologicalAttribute KEA)
-                 ON (    KEA.ID = TgtKea.KEAID
-                     AND TgtKea.TargetID = Tgt.ID
-                     AND Tgt.ViabilityMode = "KEA"
-                    )
-          LEFT JOIN (v_KEAIndicator KeaInd, Indicator Ind2)
-                 ON (    Ind2.ID = KeaInd.IndicatorID
-                     AND KeaInd.KeaID = KEA.ID
-                    )
-          LEFT JOIN (IndicatorMeasurement IndMeas2, Measurement Meas2)
-                 ON (    Meas2.ID = IndMeas2.MeasurementID
-                     AND IndMeas2.IndicatorID = Ind2.ID
-                    )
+          LEFT JOIN v_TargetIndicator Ind1
+                 ON Ind1.TargetID = Tgt.ID
+                AND Tgt.ViabilityMode = "Simple"
+
+          LEFT JOIN v_IndicatorMeasurement Meas
+                 ON Meas.IndicatorID = Ind1.ID
+
+          LEFT JOIN v_TargetKeyAttribute KEA
+                 ON KEA.TargetID = Tgt.ID
+                AND Tgt.ViabilityMode = "KEA"
+
+          LEFT JOIN v_KeyAttributeIndicator Ind2
+                 ON Ind2.KeyAttributeID = KEA.ID
+
+          LEFT JOIN v_IndicatorMeasurement Meas2
+                 ON Meas2.IndicatorID = Ind2.ID
+
  WHERE PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
    AND Summ.ID = (SELECT MAX(ProjectSummaryID)
@@ -574,8 +567,8 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 
 SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        Tgt.Name,ViabilityMode,RATING(ViabilityStatus) AS "Viab Rating",
-       KeyEcologicalAttribute_Id,KEA.Name AS "KEA Name",KEA.Details AS "KEA Details",
-       CASE WHEN TgtKea.ID IS NOT NULL THEN KeaType(KEA.KeyEcologicalAttributeType) END AS "Type",
+       KeyAttribute_Id,KEA.Name AS "KEA Name",KEA.Details AS "KEA Details",
+       CASE WHEN KEA.ID IS NOT NULL THEN KeaType(KEA.KeyAttributeType) END AS "Type",
        KEA.Comments AS "KEA Comments",
        CASE WHEN Ind1.ID IS NOT NULL
             THEN Ind1.Indicator_id ELSE Ind2.Indicator_Id
@@ -601,24 +594,20 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 
   FROM ProjectSummary Summ, ExternalProjectID PID,
        Target Tgt
-          LEFT JOIN (TargetIndicator TgtInd, Indicator Ind1)
-                 ON (    Ind1.ID = TgtInd.IndicatorID
-                     AND TgtInd.TargetID = Tgt.ID
-                     AND ViabilityMode = "Simple"
-                    )
-          LEFT JOIN (IndicatorMeasurement IndMeas, Measurement Meas)
-                 ON (    Meas.ID = IndMeas.MeasurementID
-                     AND IndMeas.IndicatorID = Ind1.ID
-                    )
-          LEFT JOIN (v_TargetKEA TgtKea, KeyEcologicalAttribute KEA)
-                 ON (    KEA.ID = TgtKea.KEAID
-                     AND TgtKea.TargetID = Tgt.ID
-                     AND ViabilityMode = "KEA"
-                    )
-          LEFT JOIN (v_KEAIndicator KeaInd, Indicator Ind2)
-                 ON (    Ind2.ID = KeaInd.IndicatorID
-                     AND KeaInd.KeaID = KEA.ID
-                    )
+          LEFT JOIN v_TargetIndicator Ind1
+                 ON Ind1.TargetID = Tgt.ID
+                AND ViabilityMode = "Simple"
+
+          LEFT JOIN v_IndicatorMeasurement Meas
+                 ON Meas.IndicatorID = Ind1.ID
+
+          LEFT JOIN v_TargetKeyAttribute KEA
+                 ON KEA.TargetID = Tgt.ID
+                AND ViabilityMode = "KEA"
+
+          LEFT JOIN v_KeyAttributeIndicator Ind2
+                 ON Ind2.KeyAttributeID = KEA.ID
+
  WHERE PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
    AND Summ.ID = (SELECT MAX(ProjectSummaryID)
@@ -636,21 +625,19 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 #CREATE VIEW vTargetViabilityRatings AS
 SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        Tgt.Name,ViabilityMode,RATING(ViabilityStatus) AS "Viab Rating",
-       KeyEcologicalAttribute_Id, KEA.Name AS "KEA Name",KeaType(KEA.KeyEcologicalAttributeType) AS "KEA Type",
+       KeyAttribute_Id, KEA.Name AS "KEA Name",KeaType(KEA.KeyAttributeType) AS "KEA Type",
        Ind.Indicator_Id,Ind.Name AS IndicatorName,
        RATING(StatusCode) AS Rating, ThresholdValue, ThresholdDetails,
        RatingSource,ViabilityRatingsComments
   FROM ProjectSummary Summ, ExternalProjectID PID,
        Target Tgt
-          LEFT JOIN (v_TargetKEA TgtKea, KeyEcologicalAttribute KEA)
-                 ON (    KEA.ID = TgtKEA.KEAID
-                     AND TgtKea.TargetID = Tgt.ID
-                    )
-          LEFT JOIN (v_KEAIndicator KEAInd, Indicator Ind)
-                 ON (    Ind.ID = KEAInd.IndicatorID
-                     AND KEAInd.KEAID = KEA.ID
+          LEFT JOIN v_TargetKeyAttribute KEA
+                 ON KEA.TargetID = Tgt.ID
+
+          LEFT JOIN v_KeyAttributeIndicator Ind
+                 ON Ind.KeyAttributeID = KEA.ID
                      AND Ind.IsActive = TRUE
-                    )
+
           LEFT JOIN IndicatorThreshold Thresh
                  ON Thresh.IndicatorID = Ind.ID
 
@@ -673,8 +660,8 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 #CREATE VIEW vTargetViabilityMonitoring AS
 SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        Tgt.Name,ViabilityMode,RATING(ViabilityStatus) AS "Viab Rating",
-       KeyEcologicalAttribute_Id, KEA.Name AS "KEA Name",
-       KeaType(KEA.KeyEcologicalAttributeType) AS "KEA Type",
+       KeyAttribute_Id, KEA.Name AS "KEA Name",
+       KeaType(KEA.KeyAttributeType) AS "KEA Type",
        CASE WHEN Ind1.ID IS NOT NULL
             THEN Ind1.Indicator_id ELSE Ind2.Indicator_Id
         END AS Indicator_Id,
@@ -685,26 +672,23 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        CASE WHEN Meth1.ID IS NOT NULL THEN Meth1.Comments ELSE Meth2.Comments END AS Comments
   FROM ProjectSummary Summ, ExternalProjectID PID,
        Target Tgt
-          LEFT JOIN (TargetIndicator TgtInd, Indicator Ind1)
-                 ON (    Ind1.ID = TgtInd.IndicatorID
-                     AND TgtInd.TargetID = Tgt.ID
-                     AND ViabilityMode = "Simple"
-                    )
+          LEFT JOIN v_TargetIndicator Ind1
+                 ON Ind1.TargetID = Tgt.ID
+                AND ViabilityMode = "Simple"
+
           LEFT JOIN (IndicatorMethod IndMeth1, Method Meth1)
                  ON (    Meth1.ID = IndMeth1.MethodID
                      AND IndMeth1.IndicatorID = Ind1.ID
                      AND Ind1.IsActive = TRUE
                     )
-           LEFT JOIN (v_TargetKEA TgtKea, KeyEcologicalAttribute KEA)
-                 ON (    KEA.ID = TgtKEA.KEAID
-                     AND TgtKea.TargetID = Tgt.ID
-                     AND ViabilityMode = "KEA"
-                    )
-          LEFT JOIN (v_KEAIndicator KEAInd, Indicator Ind2)
-                 ON (    Ind2.ID = KEAInd.IndicatorID
-                     AND KEAInd.KEAID = KEA.ID
-                     AND Ind2.IsActive = TRUE
-                    )
+           LEFT JOIN v_TargetKeyAttribute KEA
+                  ON KEA.TargetID = Tgt.ID
+                 AND ViabilityMode = "KEA"
+
+          LEFT JOIN v_KeyAttributeIndicator Ind2
+                 ON Ind2.KeyAttributeID = KEA.ID
+                AND Ind2.IsActive = TRUE
+
           LEFT JOIN (IndicatorMethod IndMeth2, Method Meth2)
                  ON (    Meth2.ID = IndMeth2.MethodID
                      AND IndMeth2.IndicatorID = Ind2.ID
@@ -728,8 +712,8 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 #CREATE VIEW vTargetViabilityProgress AS
 SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        Tgt.Name,ViabilityMode,RATING(ViabilityStatus) AS "Viab Rating",
-       KeyEcologicalAttribute_Id, KEA.Name AS "KEA Name",
-       KeaType(KEA.KeyEcologicalAttributeType) AS "KEA Type",
+       KeyAttribute_Id, KEA.Name AS "KEA Name",
+       KeaType(KEA.KeyAttributeType) AS "KEA Type",
        CASE WHEN Ind1.ID IS NOT NULL
             THEN Ind1.Indicator_id ELSE Ind2.Indicator_Id
         END AS Indicator_Id,
@@ -742,26 +726,23 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
             AS ProgressStatus
   FROM ProjectSummary Summ, ExternalProjectID PID,
        Target Tgt
-          LEFT JOIN (TargetIndicator TgtInd, Indicator Ind1)
-                 ON (    Ind1.ID = TgtInd.IndicatorID
-                     AND TgtInd.TargetID = Tgt.ID
-                     AND ViabilityMode = "Simple"
-                    )
+          LEFT JOIN v_TargetIndicator Ind1
+                 ON Ind1.TargetID = Tgt.ID
+                AND ViabilityMode = "Simple"
+
           LEFT JOIN (IndicatorProgressReport IndPrg1, ProgressReport Prog1)
                  ON (    Prog1.ID = IndPrg1.ProgressReportID
                      AND IndPrg1.IndicatorID = Ind1.ID
                      AND Ind1.IsActive = TRUE
                     )
-          LEFT JOIN (v_TargetKEA TgtKea, KeyEcologicalAttribute KEA)
-                 ON (    KEA.ID = TgtKEA.KEAID
-                     AND TgtKea.TargetID = Tgt.ID
-                     AND ViabilityMode = "KEA"
-                    )
-          LEFT JOIN (v_KEAIndicator KEAInd2, Indicator Ind2)
-                 ON (    Ind2.ID = KEAInd2.IndicatorID
-                     AND KEAInd2.KEAID = KEA.ID
-                     AND Ind2.IsActive = TRUE
-                    )
+          LEFT JOIN v_TargetKeyAttribute KEA
+                 ON KEA.TargetID = Tgt.ID
+                AND ViabilityMode = "KEA"
+
+          LEFT JOIN v_KeyAttributeIndicator Ind2
+                 ON Ind2.KeyAttributeID = KEA.ID
+                AND Ind2.IsActive = TRUE
+
           LEFT JOIN (IndicatorProgressReport IndPrg2, ProgressReport Prog2)
                  ON (    Prog2.ID = IndPrg2.ProgressReportID
                      AND IndPrg2.IndicatorID = Ind2.ID
@@ -784,8 +765,8 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
 #CREATE VIEW vTargetViabilityDesired AS
 SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
        Tgt.Name,ViabilityMode,RATING(ViabilityStatus) AS "Viab Rating",
-       KeyEcologicalAttribute_Id, KEA.Name AS "KEA Name",
-       KeaType(KEA.KeyEcologicalAttributeType) AS "KEA Type",
+       KeyAttribute_Id, KEA.Name AS "KEA Name",
+       KeaType(KEA.KeyAttributeType) AS "KEA Type",
        CASE WHEN Ind1.ID IS NOT NULL
             THEN Ind1.Indicator_id ELSE Ind2.Indicator_Id
         END AS Indicator_Id,
@@ -807,21 +788,18 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Target_Id,
             AS FutureStatusComments
   FROM ProjectSummary Summ, ExternalProjectID PID,
        Target Tgt
-          LEFT JOIN (TargetIndicator TgtInd, Indicator Ind1)
-                 ON (    Ind1.ID = TgtInd.IndicatorID
-                     AND TgtInd.TargetID = Tgt.ID
-                     AND ViabilityMode = "Simple"
-                    )
-          LEFT JOIN (v_TargetKEA TgtKea, KeyEcologicalAttribute KEA)
-                 ON (    KEA.ID = TgtKEA.KEAID
-                     AND TgtKea.TargetID = Tgt.ID
-                     AND ViabilityMode = "KEA"
-                    )
-          LEFT JOIN (v_KEAIndicator KEAInd2, Indicator Ind2)
-                 ON (    Ind2.ID = KEAInd2.IndicatorID
-                     AND KEAInd2.KEAID = KEA.ID
-                     AND Ind2.IsActive = TRUE
-                    )
+          LEFT JOIN v_TargetIndicator Ind1
+                 ON Ind1.TargetID = Tgt.ID
+                AND ViabilityMode = "Simple"
+
+          LEFT JOIN v_TargetKeyAttribute KEA
+                 ON KEA.TargetID = Tgt.ID
+                AND ViabilityMode = "KEA"
+
+          LEFT JOIN v_KeyAttributeIndicator Ind2
+                 ON Ind2.KeyAttributeID = KEA.ID
+                AND Ind2.IsActive = TRUE
+
  WHERE PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
    AND Summ.ID = (SELECT MAX(ProjectSummaryID)
@@ -1163,7 +1141,7 @@ SELECT DISTINCT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Obj.Objective_
 #DROP VIEW IF EXISTS vTargetViability;
 #CREATE VIEW vTargetViability AS
 SELECT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Name AS Target,
-       KEA.Name AS KEA,KEA.KeyEcologicalAttributeType AS KEACatgy,
+       KEA.Name AS KEA,KEA.KeyAttributeType AS KEACatgy,
        CASE WHEN Ind1.ID IS NOT NULL THEN Ind1.Name ELSE Ind2.Name END AS Indicator,
        DATE(CASE WHEN Ind1.ID IS NOT NULL THEN Ind1.FutureStatusDate ELSE Ind2.FutureStatusDate END)
             AS FutureStatusDate,
@@ -1184,36 +1162,31 @@ SELECT Summ.ID AS ProjectSummaryID,ProjectName,ProjectId,Tgt.Name AS Target,
             AS ProgressStatus
   FROM ProjectSummary Summ, ExternalProjectID PID,
        Target Tgt
-          LEFT JOIN (TargetIndicator TgtInd, Indicator Ind1)
-                 ON (    Ind1.ID = TgtInd.IndicatorID
-                     AND TgtInd.TargetID = Tgt.ID
-                     AND ViabilityMode = "Simple"
-                    )
-          LEFT JOIN (IndicatorMeasurement IndMeas1, Measurement Meas1)
-                 ON (    Meas1.ID = IndMeas1.MeasurementID
-                     AND IndMeas1.IndicatorID = Ind1.ID
-                     AND Ind1.IsActive = TRUE
-                    )
+          LEFT JOIN v_TargetIndicator Ind1
+                 ON Ind1.TargetID = Tgt.ID
+                AND ViabilityMode = "Simple"
+
+          LEFT JOIN v_IndicatorMeasurement Meas1
+                 ON Meas1.IndicatorID = Ind1.ID
+                AND Ind1.IsActive = TRUE
+
           LEFT JOIN (IndicatorProgressReport IndPrg1, ProgressReport Prg1)
                  ON (    Prg1.ID = IndPrg1.ProgressReportID
                      AND IndPrg1.IndicatorID = Ind1.ID
                      AND Ind1.IsActive = TRUE
                     )
-          LEFT JOIN (v_TargetKEA TgtKea, KeyEcologicalAttribute KEA)
-                 ON (    KEA.ID = TgtKEA.KEAID
-                     AND TgtKea.TargetID = Tgt.ID
-                     AND ViabilityMode = "KEA"
-                    )
-          LEFT JOIN (v_KEAIndicator KEAInd2, Indicator Ind2)
-                 ON (    Ind2.ID = KEAInd2.IndicatorID
-                     AND KEAInd2.KEAID = KEA.ID
-                     AND Ind2.IsActive = TRUE
-                    )
-          LEFT JOIN (IndicatorMeasurement IndMeas2, Measurement Meas2)
-                 ON (    Meas2.ID = IndMeas2.MeasurementID
-                     AND IndMeas2.IndicatorID = Ind2.ID
-                     AND Ind2.IsActive = TRUE
-                    )
+          LEFT JOIN v_TargetKeyAttribute KEA
+                 ON KEA.TargetID = Tgt.ID
+                AND ViabilityMode = "KEA"
+
+          LEFT JOIN v_KeyAttributeIndicator Ind2
+                 ON Ind2.KeyAttributeID = KEA.ID
+                AND Ind2.IsActive = TRUE
+
+          LEFT JOIN v_IndicatorMeasurement Meas2
+                 ON Meas2.IndicatorID = Ind2.ID
+                AND Ind2.IsActive = TRUE
+
           LEFT JOIN (IndicatorProgressReport IndPrg2, ProgressReport Prg2)
                  ON (    Prg2.ID = IndPrg2.ProgressReportID
                      AND IndPrg2.IndicatorID = Ind2.ID
@@ -1455,10 +1428,10 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
               CASE WHEN Str.Name IS NULL THEN "" ELSE Str.Name END
              ) AS Strategy, StrAct.Sequence,
        CONCAT(CASE WHEN Activity_Id IS NULL THEN "" ELSE CONCAT(Activity_Id,". ") END,
-              CASE WHEN Act.Name IS NULL THEN "" ELSE Act.Name END
+              CASE WHEN StrAct.Name IS NULL THEN "" ELSE StrAct.Name END
              ) AS Activity, NULL AS ActTskSeq, NULL AS Task,
-       ProgressStatus, fn_CalcWho(Act.ProjectSummaryID,"Activity",Act.ID) AS Who,
-       Act.CalculatedStartDate, Act.CalculatedEndDate, Years.PlanYear As "Year",
+       ProgressStatus, fn_CalcWho(StrAct.ProjectSummaryID,"Activity",StrAct.ID) AS Who,
+       StrAct.CalculatedStartDate, StrAct.CalculatedEndDate, Years.PlanYear As "Year",
        (SELECT ROUND(SUM(NumberOfUnits),1) AS WorkUnits
           FROM ActivityCalculatedWorkUnits ActWrk, DateUnitWorkUnits Work
          WHERE Work.Factor = "CalculatedWorkUnits"
@@ -1466,7 +1439,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
            AND ActWrk.ActivityID = Years.FactorID
            AND YEAR(Work.EndDate) = Years.PlanYear
        ) AS WorkUnits,
-       ROUND(Act.CalculatedWorkUnitsTotal,1) AS CalculatedWorkUnitsTotal,
+       ROUND(StrAct.CalculatedWorkUnitsTotal,1) AS CalculatedWorkUnitsTotal,
        (SELECT ROUND(SUM(Expense),1) AS Expense
           FROM ActivityCalculatedExpense ActExp, DateUnitExpense Exp
          WHERE Exp.Factor = "CalculatedExpense"
@@ -1474,13 +1447,12 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
            AND ActExp.ActivityID = Years.FactorID
            AND YEAR(Exp.EndDate) = Years.PlanYear
        ) AS Expense,
-       ROUND(Act.CalculatedExpenseTotal,1) AS CalculatedExpenseTotal,
-       ROUND(Act.CalculatedTotalBudgetCost,1) AS CalculatedTotalBudgetCost
-  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, StrategyActivity StrAct,
-       Activity Act
+       ROUND(StrAct.CalculatedExpenseTotal,1) AS CalculatedExpenseTotal,
+       ROUND(StrAct.CalculatedTotalBudgetCost,1) AS CalculatedTotalBudgetCost
+  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, v_StrategyActivity StrAct
           LEFT JOIN (ActivityProgressReport ActPrg, ProgressReport Prg)
                  ON (    Prg.ID = ActPrg.ProgressReportID
-                     AND ActPrg.ActivityID = Act.ID
+                     AND ActPrg.ActivityID = StrAct.ID
                      AND Prg.XID = (SELECT MAX(ActPrg2.ProgressReportXID)
                                       FROM ActivityProgressReport ActPrg2
                                      WHERE ActPrg2.ActivityID = ActPrg.ActivityID
@@ -1504,8 +1476,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                     ),
        v_PlanYears AS Years
  WHERE Years.ProjectSummaryID = Years.ProjectSummaryID
-   AND Years.FactorID = Act.ID
-   AND Act.ID = StrAct.ActivityID
+   AND Years.FactorID = StrAct.ID
    AND StrAct.StrategyID = Str.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
@@ -1516,7 +1487,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                  )
    AND Str.ProjectSummaryID = Summ.ID
    AND CASE WHEN Str.Status = "Draft" THEN FALSE ELSE TRUE END
- GROUP BY ProjectSummaryID, Str.ID, Act.ID, Who, `Year`
+ GROUP BY ProjectSummaryID, Str.ID, StrAct.ID, Who, `Year`
        HAVING WorkUnits > 0 OR Expense > 0
 
  UNION ALL
@@ -1526,8 +1497,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
               CASE WHEN Str.Name IS NULL THEN "" ELSE Str.Name END
              ) AS Strategy, StrAct.Sequence,
        CONCAT(CASE WHEN Activity_Id IS NULL THEN "" ELSE CONCAT(Activity_Id,". ") END,
-              CASE WHEN Act.Name IS NULL THEN "" ELSE Act.Name END
-             ) AS Activity, ActTask.Sequence,
+              CASE WHEN StrAct.Name IS NULL THEN "" ELSE StrAct.Name END
+             ) AS Activity, Task.Sequence,
        CONCAT(CASE WHEN Task_Id IS NULL THEN "" ELSE CONCAT(Task_Id,". ") END,
               CASE WHEN Task.Name IS NULL THEN "" ELSE Task.Name END
              ) AS Task,
@@ -1550,9 +1521,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        ) AS Expense,
        ROUND(Task.CalculatedExpenseTotal,1) AS CalculatedExpenseTotal,
        ROUND(Task.CalculatedTotalBudgetCost,1) AS CalculatedTotalBudgetCost
-  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, StrategyActivity StrAct,
-       Activity Act, ActivityTask ActTask,
-       Task Task
+  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, v_StrategyActivity StrAct,
+       v_ActivityTask Task
           LEFT JOIN (TaskProgressReport TaskPrg, ProgressReport Prg)
                  ON (    Prg.ID = TaskPrg.ProgressReportID
                      AND TaskPrg.TaskID = Task.ID
@@ -1580,10 +1550,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        v_PlanYears AS Years
  WHERE Years.ProjectSummaryID = Task.ProjectSummaryID
    AND Years.FactorID = Task.ID
-   AND Task.ProjectSummaryID = ActTask.ProjectSummaryID
-   AND Task.XID = ActTask.TaskXID
-   AND ActTask.ActivityID = Act.ID
-   AND Act.ID = StrAct.ActivityID
+   AND Task.ActivityID = StrAct.ID
    AND StrAct.StrategyID = Str.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
@@ -1594,7 +1561,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                  )
    AND Str.ProjectSummaryID = Summ.ID
    AND CASE WHEN Str.Status = "Draft" THEN FALSE ELSE TRUE END
- GROUP BY ProjectSummaryID, Str.ID, Act.ID, Task.ID, Who, `Year`
+ GROUP BY ProjectSummaryID, Str.ID, StrAct.ID, Task.ID, Who, `Year`
        HAVING WorkUnits > 0 OR Expense > 0
  ORDER BY ProjectSummaryID DESC, Strategy, StrActSeq, ActTskSeq, Year;
 
@@ -1625,8 +1592,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
          WHERE Work1.Factor = "ResourceAssignment"
            AND Work1.FactorID = RsrcAsgn.ID
        ) AS Total
-  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, StrategyAssignment StrAsgn,
-       ResourceAssignment RsrcAsgn
+  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, v_StrategyAssignment RsrcAsgn
           LEFT JOIN AccountingCode Acct
             ON RsrcAsgn.AccountingCodeID = Acct.ID
           LEFT JOIN FundingSource Fund
@@ -1639,8 +1605,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
  WHERE Work.Factor = "ResourceAssignment"
    AND Work.FactorID = RsrcAsgn.ID
    AND Rsrc.ID = RsrcAsgn.ProjectResourceID
-   AND RsrcAsgn.ID = StrAsgn.ResourceAssignmentID
-   AND StrAsgn.StrategyID = Str.ID
+   AND RsrcAsgn.StrategyID = Str.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
    AND Summ.ID = (SELECT MAX(ProjectSummaryID)
@@ -1658,7 +1623,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
               CASE WHEN Str.Name IS NULL THEN "" ELSE Str.Name END
              ) AS Strategy, StrAct.Sequence,
        CONCAT(CASE WHEN Activity_Id IS NULL THEN "" ELSE CONCAT(Activity_Id,". ") END,
-              CASE WHEN Act.Name IS NULL THEN "" ELSE Act.Name END
+              CASE WHEN StrAct.Name IS NULL THEN "" ELSE StrAct.Name END
              ) AS Activity, NULL AS ActTskSeq, NULL AS Task,
        CONCAT(CASE WHEN Resource_Id IS NULL THEN "" ELSE CONCAT(Resource_Id,": ") END,
               CONCAT(CASE WHEN GivenName IS NULL THEN "" ELSE CONCAT(GivenName," ") END,
@@ -1677,9 +1642,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
          WHERE Work1.Factor = "ResourceAssignment"
            AND Work1.FactorID = RsrcAsgn.ID
        ) AS Total
-  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, StrategyActivity StrAct,
-       Activity Act, ActivityAssignment ActAsgn,
-       ResourceAssignment RsrcAsgn
+  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, v_StrategyActivity StrAct,
+       v_ActivityAssignment RsrcAsgn
           LEFT JOIN AccountingCode Acct
             ON RsrcAsgn.AccountingCodeID = Acct.ID
           LEFT JOIN FundingSource Fund
@@ -1692,9 +1656,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
  WHERE Work.Factor = "ResourceAssignment"
    AND Work.FactorID = RsrcAsgn.ID
    AND Rsrc.ID = RsrcAsgn.ProjectResourceID
-   AND RsrcAsgn.ID = ActAsgn.ResourceAssignmentID
-   AND ActAsgn.ActivityID = Act.ID
-   AND Act.ID = StrAct.ActivityID
+   AND RsrcAsgn.ActivityID = StrAct.ID
    AND StrAct.StrategyID = Str.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
@@ -1713,8 +1675,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
               CASE WHEN Str.Name IS NULL THEN "" ELSE Str.Name END
              ) AS Strategy, StrAct.Sequence,
        CONCAT(CASE WHEN Activity_Id IS NULL THEN "" ELSE CONCAT(Activity_Id,". ") END,
-              CASE WHEN Act.Name IS NULL THEN "" ELSE Act.Name END
-             ) AS Activity, ActTask.Sequence,
+              CASE WHEN StrAct.Name IS NULL THEN "" ELSE StrAct.Name END
+             ) AS Activity, Task.Sequence,
        CONCAT(CASE WHEN Task_Id IS NULL THEN "" ELSE CONCAT(Task_Id,". ") END,
               CASE WHEN Task.Name IS NULL THEN "" ELSE Task.Name END
              ) AS Task,
@@ -1735,9 +1697,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
          WHERE Work1.Factor = "ResourceAssignment"
            AND Work1.FactorID = RsrcAsgn.ID
        ) AS Total
-  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, StrategyActivity StrAct,
-       Activity Act, ActivityTask ActTask, Task, TaskAssignment TaskAsgn,
-       ResourceAssignment RsrcAsgn
+  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, v_StrategyActivity StrAct,
+       v_ActivityTask Task, v_TaskAssignment RsrcAsgn
           LEFT JOIN AccountingCode Acct
             ON RsrcAsgn.AccountingCodeID = Acct.ID
           LEFT JOIN FundingSource Fund
@@ -1750,12 +1711,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
  WHERE Work.Factor = "ResourceAssignment"
    AND Work.FactorID = RsrcAsgn.ID
    AND Rsrc.ID = RsrcAsgn.ProjectResourceID
-   AND RsrcAsgn.ID = TaskAsgn.ResourceAssignmentID
-   AND TaskAsgn.TaskID = Task.ID
-   AND Task.ProjectSummaryID = ActTask.ProjectSummaryID
-   AND Task.XID = ActTask.TaskXID
-   AND ActTask.ActivityID = Act.ID
-   AND Act.ID = StrAct.ActivityID
+   AND RsrcAsgn.TaskID = Task.ID
+   AND Task.ActivityID = StrAct.ID
    AND StrAct.StrategyID = Str.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
@@ -1791,8 +1748,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
          WHERE Exp1.Factor = "ExpenseAssignment"
            AND Exp1.FactorID = ExpAsgn.ID
        ) AS Total
-  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, StrategyExpense StrExp,
-       ExpenseAssignment ExpAsgn
+  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, v_StrategyExpense ExpAsgn
           LEFT JOIN AccountingCode Acct
             ON ExpAsgn.AccountingCodeID = Acct.ID
           LEFT JOIN FundingSource Fund
@@ -1804,8 +1760,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        DateUnitExpense Exp
  WHERE Exp.Factor = "ExpenseAssignment"
    AND Exp.FactorID = ExpAsgn.ID
-   AND ExpAsgn.ID = StrExp.ExpenseAssignmentID
-   AND StrExp.StrategyID = Str.ID
+   AND ExpAsgn.StrategyID = Str.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
    AND Summ.ID = (SELECT MAX(ProjectSummaryID)
@@ -1823,7 +1778,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
               CASE WHEN Str.Name IS NULL THEN "" ELSE Str.Name END
              ) AS Strategy, StrAct.Sequence,
        CONCAT(CASE WHEN Activity_Id IS NULL THEN "" ELSE CONCAT(Activity_Id,". ") END,
-              CASE WHEN Act.Name IS NULL THEN "" ELSE Act.Name END
+              CASE WHEN StrAct.Name IS NULL THEN "" ELSE StrAct.Name END
              ) AS Activity, NULL AS ActTskSeq, NULL AS Task,
        ExpAsgn.Name,
        CONCAT(CASE WHEN Acct.Code IS NOT NULL THEN CONCAT(Acct.Code,": ") ELSE "" END,
@@ -1838,9 +1793,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
          WHERE Exp1.Factor = "ExpenseAssignment"
            AND Exp1.FactorID = ExpAsgn.ID
        ) AS Total
-  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, StrategyActivity StrAct,
-       Activity Act, ActivityExpense ActExp,
-       ExpenseAssignment ExpAsgn
+  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, v_StrategyActivity StrAct,
+       v_ActivityExpense ExpAsgn
           LEFT JOIN AccountingCode Acct
             ON ExpAsgn.AccountingCodeID = Acct.ID
           LEFT JOIN FundingSource Fund
@@ -1852,9 +1806,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        DateUnitExpense Exp
  WHERE Exp.Factor = "ExpenseAssignment"
    AND Exp.FactorID = ExpAsgn.ID
-   AND ExpAsgn.ID = ActExp.ExpenseAssignmentID
-   AND ActExp.ActivityID = Act.ID
-   AND Act.ID = StrAct.ActivityID
+   AND ExpAsgn.ActivityID = StrAct.ID
    AND StrAct.StrategyID = Str.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
@@ -1873,8 +1825,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
               CASE WHEN Str.Name IS NULL THEN "" ELSE Str.Name END
              ) AS Strategy, StrAct.Sequence,
        CONCAT(CASE WHEN Activity_Id IS NULL THEN "" ELSE CONCAT(Activity_Id,". ") END,
-              CASE WHEN Act.Name IS NULL THEN "" ELSE Act.Name END
-             ) AS Activity, ActTask.Sequence,
+              CASE WHEN StrAct.Name IS NULL THEN "" ELSE StrAct.Name END
+             ) AS Activity, Task.Sequence,
        CONCAT(CASE WHEN Task_Id IS NULL THEN "" ELSE CONCAT(Task_Id,". ") END,
               CASE WHEN Task.Name IS NULL THEN "" ELSE Task.Name END
              ) AS Task,
@@ -1891,9 +1843,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
          WHERE Exp1.Factor = "ExpenseAssignment"
            AND Exp1.FactorID = ExpAsgn.ID
        ) AS Total
-  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, StrategyActivity StrAct,
-       Activity Act, ActivityTask ActTask, Task Task, TaskExpense TaskExp,
-       ExpenseAssignment ExpAsgn
+  FROM ProjectSummary Summ, ExternalProjectId PID, Strategy Str, v_StrategyActivity StrAct,
+       v_ActivityTask Task, v_TaskExpense ExpAsgn
           LEFT JOIN AccountingCode Acct
             ON ExpAsgn.AccountingCodeID = Acct.ID
           LEFT JOIN FundingSource Fund
@@ -1905,12 +1856,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        DateUnitExpense Exp
  WHERE Exp.Factor = "ExpenseAssignment"
    AND Exp.FactorID = ExpAsgn.ID
-   AND ExpAsgn.ID = TaskExp.ExpenseAssignmentID
-   AND TaskExp.TaskID = Task.ID
-   AND Task.ProjectSummaryID = ActTask.ProjectSummaryID
-   AND Task.XID = ActTask.TaskXID
-   AND ActTask.ActivityID = Act.ID
-   AND Act.ID = StrAct.ActivityID
+   AND ExpAsgn.TaskID = Task.ID
+   AND Task.ActivityID = StrAct.ID
    AND StrAct.StrategyID = Str.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
@@ -2868,15 +2815,16 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
  ORDER BY ProjectSummaryID DESC, Model, Target, Objective, Strategy, Goal;
 
 
-/* Strategic Plan Monitoring */
+/* Strategic Plan Effectiveness Monitoring */
 
-#DROP VIEW IF EXISTS vStrategicPlanMonitoring;
-#CREATE VIEW vStrategicPlanMonitoring AS
+#DROP VIEW IF EXISTS vStrategicPlanEffectivenessMonitoring;
+#CREATE VIEW vStrategicPlanEffectivenessMonitoring AS
 SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Objective_Id IS NULL THEN "" ELSE CONCAT(Objective_Id,". ") END,
               CASE WHEN Obj.Name IS NULL THEN "" ELSE Obj.Name END
              ) AS Objective,
-       NULL AS Indicator, PercentComplete AS Progress, NULL AS Who, NULL AS CalculatedStartDate,
+       NULL AS Indicator, PercentDate AS ProgressDate, CONCAT(PercentComplete," %") AS Progress, 
+       NULL AS Who, NULL AS CalculatedStartDate,
        NULL AS CalculatedEndDate, Obj.Details
   FROM ProjectSummary Summ, ExternalProjectId PID,
        Objective Obj
@@ -2919,7 +2867,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Goal_Id IS NULL THEN "" ELSE CONCAT(Goal_Id,". ") END,
               CASE WHEN Goal.Name IS NULL THEN "" ELSE Goal.Name END
              ) AS Objective,
-       NULL AS Indicator, PercentComplete, NULL AS Who, NULL AS CalculatedStartDate,
+       NULL AS Indicator, PercentDate, CONCAT(PercentComplete," %"), NULL AS Who, NULL AS CalculatedStartDate,
        NULL AS CalculatedEndDate, Goal.Details
   FROM ProjectSummary Summ, ExternalProjectId PID,
        Goal Goal
@@ -2965,10 +2913,10 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Indicator_Id IS NULL THEN "" ELSE CONCAT(Indicator_Id,". ") END,
               CASE WHEN Ind.Name IS NULL THEN "" ELSE Ind.Name END
              ) AS Indicator,
-       ProgressStatus, fn_CalcWho(Ind.ProjectSummaryID,"Indicator",Ind.ID) AS Who,
+       ProgressDate, ProgressStatus, fn_CalcWho(Ind.ProjectSummaryID,"Indicator",Ind.ID) AS Who,
        Ind.CalculatedStartDate, Ind.CalculatedEndDate, Ind.Details
-  FROM ProjectSummary Summ, ExternalProjectId PID, Objective Obj, ObjectiveRelevantIndicator ObjInd,
-       Indicator Ind
+  FROM ProjectSummary Summ, ExternalProjectId PID, Objective Obj, 
+       v_ObjectiveIndicator Ind
           LEFT JOIN (IndicatorProgressReport IndPrg, ProgressReport Prg)
                  ON (    Prg.ID = IndPrg.ProgressReportID
                      AND IndPrg.IndicatorID = Ind.ID
@@ -2993,8 +2941,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                             END
                                    )
                     )
- WHERE Ind.ID = ObjInd.IndicatorID
-   AND ObjInd.ObjectiveID = Obj.ID
+ WHERE Ind.ObjectiveID = Obj.ID
    AND PID.ProjectSummaryID = Summ.ID
    AND PID.ExternalApp = "ConPro"
    AND Summ.ID = (SELECT MAX(ProjectSummaryID)
@@ -3013,7 +2960,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Indicator_Id IS NULL THEN "" ELSE CONCAT(Indicator_Id,". ") END,
               CASE WHEN Ind.Name IS NULL THEN "" ELSE Ind.Name END
              ) AS Indicator,
-       ProgressStatus, fn_CalcWho(Ind.ProjectSummaryID,"Indicator",Ind.ID) AS Who,
+       ProgressDate, ProgressStatus, fn_CalcWho(Ind.ProjectSummaryID,"Indicator",Ind.ID) AS Who,
        Ind.CalculatedStartDate, Ind.CalculatedEndDate, Ind.Details
   FROM ProjectSummary Summ, ExternalProjectId PID, Goal Goal, GoalRelevantIndicator GoalInd,
        Indicator Ind
@@ -3051,4 +2998,179 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                      AND PID2.ProjectId = PID.ProjectId
                  )
    AND Ind.ProjectSummaryID = Summ.ID
- ORDER BY ProjectSummaryID, Objective, Indicator
+ ORDER BY ProjectSummaryID, Objective, Indicator;
+ 
+
+/* Strategic Plan Results Monitoring */
+
+#DROP VIEW IF EXISTS vStrategicPlanResultsMonitoring;
+#CREATE VIEW vStrategicPlanResultsMonitoring AS
+SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
+       CONCAT(CASE WHEN Objective_Id IS NULL THEN "" ELSE CONCAT(Objective_Id,". ") END,
+              CASE WHEN Obj.Name IS NULL THEN "" ELSE Obj.Name END
+             ) AS Objective,
+       NULL AS Indicator, PercentDate AS MeasurementDate, CONCAT(PercentComplete," %") AS Measurement, 
+       NULL AS Trend, NULL AS Source, NULL AS Who, NULL AS CalculatedStartDate,
+       NULL AS CalculatedEndDate, Obj.Details
+  FROM ProjectSummary Summ, ExternalProjectId PID,
+       Objective Obj
+          LEFT JOIN (ObjectiveProgressPercent ObjPct, ProgressPercent Pct)
+            ON (    Pct.ID = ObjPct.ProgressPercentID
+                AND ObjPct.ObjectiveID = Obj.ID
+                AND Pct.XID = (SELECT MAX(ObjPct2.ProgressPercentXID)
+                                 FROM ObjectiveProgressPercent ObjPct2
+                                WHERE ObjPct2.ObjectiveID = ObjPct.ObjectiveID
+                                  AND CASE WHEN EXISTS
+                                                (SELECT PercentDate
+                                                   FROM ObjectiveProgressPercent ObjPct3,
+                                                         ProgressPercent Pct3
+                                                  WHERE Pct3.ID = ObjPct3.ProgressPercentID
+                                                    AND ObjPct3.ObjectiveID = ObjPct2.ObjectiveID
+                                                )
+                                           THEN PercentDate =
+                                                   (SELECT MAX(PercentDate)
+                                                      FROM ObjectiveProgressPercent ObjPct4,
+                                                           ProgressPercent Pct4
+                                                     WHERE Pct4.ID = ObjPct4.ProgressPercentID
+                                                       AND ObjPct4.ObjectiveID = ObjPct2.ObjectiveID
+                                                   )
+                                           ELSE TRUE
+                                       END
+                              )
+               )
+ WHERE PID.ProjectSummaryID = Summ.ID
+   AND PID.ExternalApp = "ConPro"
+   AND Summ.ID = (SELECT MAX(ProjectSummaryID)
+                    FROM ExternalProjectID PID2
+                   WHERE PID2.ExternalApp = PID.ExternalApp
+                     AND PID2.ProjectId = PID.ProjectId
+                 )
+   AND Obj.ProjectSummaryID = Summ.ID
+
+ UNION ALL
+
+SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
+       CONCAT(CASE WHEN Goal_Id IS NULL THEN "" ELSE CONCAT(Goal_Id,". ") END,
+              CASE WHEN Goal.Name IS NULL THEN "" ELSE Goal.Name END
+             ) AS Objective,
+       NULL AS Indicator, PercentDate, CONCAT(PercentComplete," %"), NULL AS Trend, NULL AS Source, 
+       NULL AS Who, NULL AS CalculatedStartDate, NULL AS CalculatedEndDate, Goal.Details
+  FROM ProjectSummary Summ, ExternalProjectId PID,
+       Goal Goal
+          LEFT JOIN (GoalProgressPercent GoalPct, ProgressPercent Pct)
+            ON (    Pct.ID = GoalPct.ProgressPercentID
+                AND GoalPct.GoalID = Goal.ID
+                AND Pct.XID = (SELECT MAX(GoalPct2.ProgressPercentXID)
+                                 FROM GoalProgressPercent GoalPct2
+                                WHERE GoalPct2.GoalID = GoalPct.GoalID
+                                  AND CASE WHEN EXISTS
+                                                (SELECT PercentDate
+                                                   FROM GoalProgressPercent GoalPct3,
+                                                         ProgressPercent Pct3
+                                                  WHERE Pct3.ID = GoalPct3.ProgressPercentID
+                                                    AND GoalPct3.GoalID = GoalPct2.GoalID
+                                                )
+                                           THEN PercentDate =
+                                                   (SELECT MAX(PercentDate)
+                                                      FROM GoalProgressPercent GoalPct4,
+                                                           ProgressPercent Pct4
+                                                     WHERE Pct4.ID = GoalPct4.ProgressPercentID
+                                                       AND GoalPct4.GoalID = GoalPct2.GoalID
+                                                   )
+                                           ELSE TRUE
+                                       END
+                              )
+               )
+ WHERE PID.ProjectSummaryID = Summ.ID
+   AND PID.ExternalApp = "ConPro"
+   AND Summ.ID = (SELECT MAX(ProjectSummaryID)
+                    FROM ExternalProjectID PID2
+                   WHERE PID2.ExternalApp = PID.ExternalApp
+                     AND PID2.ProjectId = PID.ProjectId
+                 )
+   AND Goal.ProjectSummaryID = Summ.ID
+
+ UNION ALL
+
+SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
+       CONCAT(CASE WHEN Objective_Id IS NULL THEN "" ELSE CONCAT(Objective_Id,". ") END,
+              CASE WHEN Obj.Name IS NULL THEN "" ELSE Obj.Name END
+             ) AS Objective,
+       CONCAT(CASE WHEN Indicator_Id IS NULL THEN "" ELSE CONCAT(Indicator_Id,". ") END,
+              CASE WHEN Ind.Name IS NULL THEN "" ELSE Ind.Name END
+             ) AS Indicator,
+       Meas.Date, MeasurementValue, Trend, Source, fn_CalcWho(Ind.ProjectSummaryID,"Indicator",Ind.ID) AS Who,
+       Ind.CalculatedStartDate, Ind.CalculatedEndDate, Ind.Details
+  FROM ProjectSummary Summ, ExternalProjectId PID, Objective Obj, ObjectiveRelevantIndicator ObjInd,
+       Indicator Ind
+          LEFT JOIN v_IndicatorMeasurement Meas
+                 ON Meas.IndicatorID = Ind.ID
+                AND Meas.XID = (SELECT MAX(IndMeas2.MeasurementXID)
+                                  FROM IndicatorMeasurement IndMeas2
+                                 WHERE IndMeas2.IndicatorID = Meas.IndicatorID
+                                   AND CASE WHEN EXISTS
+                                                 (SELECT Date
+                                                    FROM v_IndicatorMeasurement Meas3
+                                                   WHERE Meas3.IndicatorID = IndMeas2.IndicatorID
+                                                 )
+                                            THEN Date =
+                                                 (SELECT MAX(Date)
+                                                    FROM v_IndicatorMeasurement Meas4
+                                                   WHERE Meas4.IndicatorID = IndMeas2.IndicatorID
+                                                 )
+                                            ELSE TRUE
+                                        END
+                               )
+ WHERE Ind.ID = ObjInd.IndicatorID
+   AND ObjInd.ObjectiveID = Obj.ID
+   AND PID.ProjectSummaryID = Summ.ID
+   AND PID.ExternalApp = "ConPro"
+   AND Summ.ID = (SELECT MAX(ProjectSummaryID)
+                    FROM ExternalProjectID PID2
+                   WHERE PID2.ExternalApp = PID.ExternalApp
+                     AND PID2.ProjectId = PID.ProjectId
+                 )
+   AND Ind.ProjectSummaryID = Summ.ID
+
+ UNION ALL
+
+SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
+       CONCAT(CASE WHEN Goal_Id IS NULL THEN "" ELSE CONCAT(Goal_Id,". ") END,
+              CASE WHEN Goal.Name IS NULL THEN "" ELSE Goal.Name END
+             ) AS Objective,
+       CONCAT(CASE WHEN Indicator_Id IS NULL THEN "" ELSE CONCAT(Indicator_Id,". ") END,
+              CASE WHEN Ind.Name IS NULL THEN "" ELSE Ind.Name END
+             ) AS Indicator,
+       Meas.Date, MeasurementValue, Trend, Source, fn_CalcWho(Ind.ProjectSummaryID,"Indicator",Ind.ID) AS Who,
+       Ind.CalculatedStartDate, Ind.CalculatedEndDate, Ind.Details
+  FROM ProjectSummary Summ, ExternalProjectId PID, Goal Goal, GoalRelevantIndicator GoalInd,
+       Indicator Ind
+          LEFT JOIN v_IndicatorMeasurement Meas
+                 ON Meas.IndicatorID = Ind.ID
+                AND Meas.XID = (SELECT MAX(IndMeas2.MeasurementXID)
+                                  FROM IndicatorMeasurement IndMeas2
+                                 WHERE IndMeas2.IndicatorID = Meas.IndicatorID
+                                   AND CASE WHEN EXISTS
+                                                 (SELECT Date
+                                                    FROM v_IndicatorMeasurement Meas3
+                                                   WHERE Meas3.IndicatorID = IndMeas2.IndicatorID
+                                                 )
+                                            THEN Date =
+                                                 (SELECT MAX(Date)
+                                                    FROM v_IndicatorMeasurement Meas4
+                                                   WHERE Meas4.IndicatorID = IndMeas2.IndicatorID
+                                                 )
+                                            ELSE TRUE
+                                        END
+                               )
+ WHERE Ind.ID = GoalInd.IndicatorID
+   AND GoalInd.GoalID = Goal.ID
+   AND PID.ProjectSummaryID = Summ.ID
+   AND PID.ExternalApp = "ConPro"
+   AND Summ.ID = (SELECT MAX(ProjectSummaryID)
+                    FROM ExternalProjectID PID2
+                   WHERE PID2.ExternalApp = PID.ExternalApp
+                     AND PID2.ProjectId = PID.ProjectId
+                 )
+   AND Ind.ProjectSummaryID = Summ.ID
+ ORDER BY ProjectSummaryID, Objective, Indicator;

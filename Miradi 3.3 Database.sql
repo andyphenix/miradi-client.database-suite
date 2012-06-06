@@ -1,5 +1,5 @@
 /*
-   Miradi 3.3 Database v43.sql
+   Miradi 3.3 Database v44.sql
 
    Miradi 3.3 Relational Database Schema
    Compatible with the MySQL Database Server, Version 5.0 and later.
@@ -9,9 +9,32 @@
 
    This version of the schema is compatible with Miradi 3.3 and later versions employing 
    XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
+   
+   ** IMPORTANT NOTE: Views that join many parent/child tables join on XID rather than ID because 
+                      the project import process actually inserts into the view, not the master
+                      table. Parent IDs are not yet known at the time the views are populated during
+                      the project import process; they get populated during post-load processing. 
+                      Please do not attempt to "improve" these views by changing their join condition(s) 
+                      to use ID instead of XID. The consequence of doing so will be that parent IDs will 
+                      not get populated at all during post-load processing - and, thus, the views will 
+                      select nothing ... a condition that does not necessarily become apparent until a user 
+                      application accesses the view(s) some time later. (I know; I did it once - and had 
+                      to undo all of them.)
 
    Revision History:
-   Version 43 - 2011-09-28 - Added view v_IndicatorMeasurements.
+   Version 44 - 2012-03-07 - Added views v_StrategyActivity, v_ObjectiveIndicator,
+                             v_Task/Activity/MethodAssignment, v_Task/Activity/MethodExpense,
+                             v_TargetKeyAttribute, v_KeyAttributeIndicator, v_TargetIndicator.
+                           - Amended views v_IndicatorMeasurement, v_ThreatIndicator.
+                           - Change letter case on ENUM values to precisely match XML Schema Vocabulary.
+                           - Redesign MiradiTables.
+                           - Add MiradiColumns.
+                           - Add function fn_StripTags().
+                           - Add FiscalYear to DateUnitWorkUnits, DateUnitExpense and work/expense
+                             plan views.
+                           - Changed names of views of work/expense plan years to better reflect
+                             their raison d'etre.
+   Version 43 - 2011-09-28 - Added view v_IndicatorMeasurement.
    Version 42 - 2011-09-06 - Rename CalculatedWorkUnits and CalculatedExpense to
                              CalculatedWorkUnits and CalculatedExpense.
                            - Rename StressThreatRating to StressBasedThreatRating.
@@ -26,7 +49,7 @@
                            - Create table TaggedObjectSetFactor to contain WrappedByDiagramFactor
                              for Tagged Object Sets; fold WrappedByDiagramFactor into
                              DiagramFactor for simple diagrams.
-                           - Ditto DiagramLinkBendPoint for DiagramPoints.
+                           - Ditto DiagramLinkBendPoint for DiagramPoints.v_TaskAss
    Version 41a - 2011-08-25 - Correct a couple of copy/paste errors.
    Version 41 - 2011-08-24 - Continued revisions and streamlining to the differentiation of
                              Tasks, Activities, Methods and their associations.
@@ -127,10 +150,8 @@
 
 */
 
-
 DROP DATABASE Miradi;
 CREATE DATABASE Miradi;
-
 
 USE Miradi;
 
@@ -189,7 +210,7 @@ CREATE TABLE ProjectSummary             -- Objects-11
  OverallProjectViabilityRating CHAR(1),
  ThreatRatingMode ENUM("Simple","StressBased"),
  QuarterColumnsVisibility ENUM("ShowQuarterColumns","HideQuarterColumns"),
- WorkPlanTimeUnit ENUM("Quarterly","Yearly")
+ WorkPlanTimeUnit ENUM("QUARTERLY","YEARLY")
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
@@ -197,7 +218,7 @@ DROP TABLE IF EXISTS ExternalProjectId;
 CREATE TABLE ExternalProjectId          -- Objects-44
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL DEFAULT 0,
- ExternalApp TEXT,
+ ExternalApp VARCHAR(255),
  ProjectId INTEGER,
  FOREIGN KEY (ProjectSummaryID) References ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -312,7 +333,7 @@ CREATE TABLE ProtectedAreaCategories      -- Objects-11
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL DEFAULT 0,
  ProjectScopeID INTEGER NOT NULL DEFAULT 0,
- Code ENUM("Ia","Ib","II","III","IV","V","VI"),
+ code ENUM("Ia","Ib","II","III","IV","V","VI"),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (ProjectScopeID) REFERENCES ProjectScope(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -337,7 +358,7 @@ CREATE TABLE ProjectCountries             -- Objects-11
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL DEFAULT 0,
  ProjectLocationID INTEGER NOT NULL DEFAULT 0,
- Code CHAR(3),
+ code CHAR(3),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (ProjectLocationID) REFERENCES ProjectLocation(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -348,8 +369,8 @@ CREATE TABLE GeospatialLocation           -- Objects-11
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL DEFAULT 0,
  ProjectLocationID INTEGER NOT NULL DEFAULT 0,
- Latitude DECIMAL(6,4),
- Longitude DECIMAL(7,4),
+ latitude DECIMAL(6,4),
+ longitude DECIMAL(7,4),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (ProjectLocationID) REFERENCES ProjectLocation(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -686,7 +707,7 @@ CREATE TABLE ResourceAssignment           -- Objects-14
 DROP TABLE IF EXISTS CalculatedWorkUnits; -- Same format as Resource Assignment for Calculated Costs.
 CREATE TABLE CalculatedWorkUnits LIKE ResourceAssignment;
 ALTER TABLE CalculatedWorkUnits           -- Table serves Strategy/Activity/Task/Indicator/Method.
-      ADD COLUMN Factor VARCHAR(255) NOT NULL AFTER XID,
+      ADD COLUMN Factor VARCHAR(25) NOT NULL AFTER XID,
       ADD COLUMN FactorID INTEGER NOT NULL DEFAULT 0 AFTER Factor,
       ADD COLUMN FactorXID INTEGER NOT NULL AFTER FactorID,
       ADD INDEX (FactorID),
@@ -697,7 +718,7 @@ DROP TABLE IF EXISTS CalculatedWho;
 CREATE TABLE CalculatedWho                -- Contains the list of ResourceIds for Calculated Costs.
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
- Factor VARCHAR(255) NOT NULL DEFAULT "",
+ Factor VARCHAR(25) NOT NULL DEFAULT "",
  FactorID INTEGER NOT NULL DEFAULT 0,
  FactorXID INTEGER NOT NULL,
  ProjectResourceID INTEGER NOT NULL DEFAULT 0,
@@ -712,7 +733,7 @@ DROP TABLE IF EXISTS DateUnitWorkUnits;
 CREATE TABLE DateUnitWorkUnits
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
- Factor VARCHAR(255) NOT NULL,
+ Factor VARCHAR(25) NOT NULL,
  FactorID INTEGER NOT NULL DEFAULT 0,
  FactorXID INTEGER NOT NULL,
  WorkUnitsDateUnit VARCHAR(50),     -- These two columns
@@ -721,6 +742,7 @@ CREATE TABLE DateUnitWorkUnits
  StartMonth TINYINT,                -- minInclusive="1" maxInclusive="12"      | Extracted
  StartDate DATE,                    -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}"  -  during
  EndDate DATE,                      -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}" /  import
+ FiscalYear SMALLINT,
  NumberOfUnits DECIMAL(5,2),
  INDEX (ProjectSummaryID, FactorXID),
  INDEX (FactorID),
@@ -759,7 +781,7 @@ CREATE TABLE ExpenseAssignment            -- Objects-51
 DROP TABLE IF EXISTS CalculatedExpense;  -- Same format as Expense Assignment for Calculated Costs.
 CREATE TABLE CalculatedExpense LIKE ExpenseAssignment;
 ALTER TABLE CalculatedExpense            -- Table serves Strategy/Activity/Task/Indicator/Method.
-      ADD COLUMN Factor VARCHAR(255) NOT NULL AFTER XID,
+      ADD COLUMN Factor VARCHAR(25) NOT NULL AFTER XID,
       ADD COLUMN FactorID INTEGER NOT NULL DEFAULT 0 AFTER Factor,
       ADD COLUMN FactorXID INTEGER NOT NULL AFTER FactorID,
       ADD INDEX (FactorID),
@@ -770,7 +792,7 @@ DROP TABLE IF EXISTS DateUnitExpense;
 CREATE TABLE DateUnitExpense
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
- Factor VARCHAR(255) NOT NULL,
+ Factor VARCHAR(25) NOT NULL,
  FactorID INTEGER NOT NULL DEFAULT 0,
  FactorXID INTEGER NOT NULL,
  ExpensesDateUnit VARCHAR(50),       -- These two columns
@@ -779,6 +801,7 @@ CREATE TABLE DateUnitExpense
  StartMonth TINYINT,                 -- minInclusive="1" maxInclusive="12"      | Extracted
  StartDate DATE,                     -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}"  -  during
  EndDate DATE,                       -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}" /   import
+ FiscalYear SMALLINT,
  Expense DECIMAL(11,2),
  INDEX (ProjectSummaryID, FactorXID),
  INDEX (FactorID),
@@ -786,79 +809,61 @@ CREATE TABLE DateUnitExpense
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-DROP VIEW IF EXISTS v_WorkYears;          /* A view to select all the Fiscal Years for which there
+DROP VIEW IF EXISTS v_PlanYears;          /* A view to select all the Fiscal Years for which there
                                              exists a work plan (or expense) component. Note that
                                              this view includes Factors within each year for which
                                              such a component exits. These may be summarized out
                                              into a temp table when factor detail is not required.
                                           */
-CREATE VIEW v_WorkYears AS
+CREATE VIEW v_PlanYears AS
        SELECT Calc.ProjectSummaryID, Calc.Factor, Calc.FactorID,
-              YEAR(CASE WHEN FiscalYearStart IS NULL
-                        THEN EndDate
-                        ELSE ADDDATE(EndDate,INTERVAL FiscalYearStart-1 MONTH)
-                    END
-                  ) AS WorkYear
-         FROM CalculatedWorkUnits Calc, DateUnitWorkUnits Work, ProjectPlanning Plan
-        WHERE Plan.ProjectSummaryID = Work.ProjectSummaryID
-          AND Work.Factor LIKE "%CalculatedWorkUnits"
+              FiscalYear AS PlanYear
+         FROM CalculatedWorkUnits Calc, DateUnitWorkUnits Work
+        WHERE Work.Factor LIKE "%CalculatedWorkUnits"
           AND Work.FactorID = Calc.ID
 
         UNION
 
        SELECT Calc.ProjectSummaryID, Calc.Factor, Calc.FactorID,
-              YEAR(CASE WHEN FiscalYearStart IS NULL
-                        THEN EndDate
-                        ELSE ADDDATE(EndDate,INTERVAL FiscalYearStart-1 MONTH)
-                    END
-                  ) AS WorkYear
-         FROM CalculatedExpense Calc, DateUnitExpense Exp, ProjectPlanning Plan
-        WHERE Plan.ProjectSummaryID = Exp.ProjectSummaryID
-          AND Exp.Factor LIKE "%CalculatedExpense"
+              FiscalYear AS PlanYear
+         FROM CalculatedExpense Calc, DateUnitExpense Exp
+        WHERE Exp.Factor LIKE "%CalculatedExpense"
           AND Exp.FactorID = Calc.ID;
 
 
-DROP VIEW IF EXISTS v_WorkRsrcs;          /* A view to select all the Fiscal Years for which there
-                                             there exists a work plan resource. Note that this
-                                             view includes Factors within each year for which
-                                             such a resource exits. These may be summarized out
-                                             into a temp table when factor detail is not required.
+DROP VIEW IF EXISTS v_RsrcYears;          /* A view to select all the Fiscal Years and their 
+                                             associated work plan resources, including the 
+                                             absence of an assigned resource (ProjectResourceID = 0).
+                                             Note that this view includes Resources within each year 
+                                             for which such a resource exits. These may be summarized 
+                                             out into a temp table when Resource detail is not required.
                                           */
-CREATE VIEW v_WorkRsrcs AS
+CREATE VIEW v_RsrcYears AS
        SELECT Calc.ProjectSummaryID, Calc.Factor, Calc.FactorID,
               CASE WHEN ProjectResourceID IS NULL THEN 0
                    ELSE ProjectResourceID
                END AS ProjectResourceID,
-              YEAR(CASE WHEN FiscalYearStart IS NULL
-                        THEN EndDate
-                        ELSE ADDDATE(EndDate,INTERVAL FiscalYearStart-1 MONTH)
-                    END
-                  ) AS WorkYear
-         FROM CalculatedWorkUnits Calc, DateUnitWorkUnits Work, ProjectPlanning Plan
-        WHERE Plan.ProjectSummaryID = Work.ProjectSummaryID
-          AND Work.Factor LIKE "%CalculatedWorkUnits"
+              FiscalYear AS RsrcYear
+         FROM CalculatedWorkUnits Calc, DateUnitWorkUnits Work
+        WHERE Work.Factor LIKE "%CalculatedWorkUnits"
           AND Work.FactorID = Calc.ID;
 
 
-DROP VIEW IF EXISTS v_WorkAccts;          /* A view to select all the Fiscal Years for which there
-                                             exists a work plan (or expense) account. Note that
-                                             this view includes Factors within each year for which
-                                             such an account exits. These may be summarized out
-                                             into a temp table when factor detail is not required.
+DROP VIEW IF EXISTS v_AcctYears;          /* A view to select all the Fiscal Years for and their 
+                                             associated work plan/expense accounts, including the
+                                             absence of an assigned account. (AccountingCodeID = 0).
+                                             Note that this view includes Accounts within each year 
+                                             for which such an account exits. These may be summarized 
+                                             out into a temp table when Account detail is not required.
                                           */
-CREATE VIEW v_WorkAccts AS
+CREATE VIEW v_AcctYears AS
        SELECT Calc.ProjectSummaryID, Calc.Factor, Calc.FactorID,
               CASE WHEN AccountingCodeID IS NULL THEN 0
                    ELSE AccountingCodeID
                END AS AccountingCodeID,
-              YEAR(CASE WHEN FiscalYearStart IS NULL
-                        THEN EndDate
-                        ELSE ADDDATE(EndDate,INTERVAL FiscalYearStart-1 MONTH)
-                    END
-                  ) AS WorkYear
-         FROM CalculatedWorkUnits Calc, DateUnitWorkUnits Work, ProjectPlanning Plan
-        WHERE Plan.ProjectSummaryID = Work.ProjectSummaryID
-          AND Work.Factor LIKE "%CalculatedWorkUnits"
+              FiscalYear AS AcctYear
+         FROM CalculatedWorkUnits Calc, DateUnitWorkUnits Work
+        WHERE Work.Factor LIKE "%CalculatedWorkUnits"
           AND Work.FactorID = Calc.ID
 
         UNION
@@ -867,36 +872,27 @@ CREATE VIEW v_WorkAccts AS
               CASE WHEN AccountingCodeID IS NULL THEN 0
                    ELSE AccountingCodeID
                END AS AccountingCodeID,
-              YEAR(CASE WHEN FiscalYearStart IS NULL
-                        THEN EndDate
-                        ELSE ADDDATE(EndDate,INTERVAL FiscalYearStart-1 MONTH)
-                    END
-                  ) AS WorkYear
-         FROM CalculatedExpense Calc, DateUnitExpense Exp, ProjectPlanning Plan
-        WHERE Plan.ProjectSummaryID = Exp.ProjectSummaryID
-          AND Exp.Factor LIKE "%CalculatedExpense"
+              FiscalYear AS AcctYear
+         FROM CalculatedExpense Calc, DateUnitExpense Exp
+        WHERE Exp.Factor LIKE "%CalculatedExpense"
           AND Exp.FactorID = Calc.ID;
 
 
-DROP VIEW IF EXISTS v_WorkFunds;          /* A view to select all the Fiscal Years for which there
-                                             exists a work plan (or expense) fund. Note that
-                                             this view includes Factors within each year for which
-                                             such a fund exits. These may be summarized out
-                                             into a temp table when factor detail is not required.
+DROP VIEW IF EXISTS v_FundYears;          /* A view to select all the Fiscal Years for and their 
+                                             associated work plan/expense funds, including the
+                                             absence of an assigned fund. (FundingSourceID = 0).
+                                             Note that this view includes Funds within each year 
+                                             for which such an account exits. These may be summarized 
+                                             out into a temp table when Fund detail is not required.
                                           */
-CREATE VIEW v_WorkFunds AS
+CREATE VIEW v_FundYears AS
        SELECT Calc.ProjectSummaryID, Calc.Factor, Calc.FactorID,
               CASE WHEN FundingSourceID IS NULL THEN 0
                    ELSE FundingSourceID
                END AS FundingSourceID,
-              YEAR(CASE WHEN FiscalYearStart IS NULL
-                        THEN EndDate
-                        ELSE ADDDATE(EndDate,INTERVAL FiscalYearStart-1 MONTH)
-                    END
-                  ) AS WorkYear
-         FROM CalculatedWorkUnits Calc, DateUnitWorkUnits Work, ProjectPlanning Plan
-        WHERE Plan.ProjectSummaryID = Work.ProjectSummaryID
-          AND Work.Factor LIKE "%CalculatedWorkUnits"
+              FiscalYear AS FundYear
+         FROM CalculatedWorkUnits Calc, DateUnitWorkUnits Work
+        WHERE Work.Factor LIKE "%CalculatedWorkUnits"
           AND Work.FactorID = Calc.ID
 
         UNION
@@ -905,14 +901,9 @@ CREATE VIEW v_WorkFunds AS
               CASE WHEN FundingSourceID IS NULL THEN 0
                    ELSE FundingSourceID
                END AS FundingSourceID,
-              YEAR(CASE WHEN FiscalYearStart IS NULL
-                        THEN EndDate
-                        ELSE ADDDATE(EndDate,INTERVAL FiscalYearStart-1 MONTH)
-                    END
-                  ) AS WorkYear
-         FROM CalculatedExpense Calc, DateUnitExpense Exp, ProjectPlanning Plan
-        WHERE Plan.ProjectSummaryID = Exp.ProjectSummaryID
-          AND Exp.Factor LIKE "%CalculatedExpense"
+              FiscalYear AS FundYear
+         FROM CalculatedExpense Calc, DateUnitExpense Exp
+        WHERE Exp.Factor LIKE "%CalculatedExpense"
           AND Exp.FactorID = Calc.ID;
 
 
@@ -1078,15 +1069,15 @@ CREATE TABLE KeyEcologicalAttribute       -- Objects-17
 
 DROP VIEW IF EXISTS v_KeyAttribute;    -- An abbreviated name for KeyEcologicalAttribute
 CREATE VIEW v_KeyAttribute AS
-       SELECT ID,ProjectSummaryID,XID,KeyEcologicalAttribute_Id AS KeyAttribute_Id,
-              Name,Comments,Details,KeyEcologicalAttributeType AS KeyAttributeType
+       SELECT ID, ProjectSummaryID, XID,KeyEcologicalAttribute_Id AS KeyAttribute_Id,
+              Name, Comments, Details, KeyEcologicalAttributeType AS KeyAttributeType
          FROM KeyEcologicalAttribute;
 
 
 DROP VIEW IF EXISTS v_KEA;             -- An abbreviated name for KeyEcologicalAttribute
 CREATE VIEW v_KEA AS
-       SELECT ID,ProjectSummaryID,XID,KeyEcologicalAttribute_Id AS KEA_Id,
-              Name,Comments,Details,KeyEcologicalAttributeType AS KEAType
+       SELECT ID, ProjectSummaryID, XID, KeyEcologicalAttribute_Id AS KEA_Id,
+              Name, Comments, Details, KeyEcologicalAttributeType AS KEAType
          FROM KeyEcologicalAttribute;
 
 
@@ -1105,16 +1096,16 @@ CREATE TABLE TargetKeyEcologicalAttribute
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-DROP VIEW IF EXISTS v_TargetKEA;     -- An abbreviated name for TargetKeyecologicalAttribute
-CREATE VIEW v_TargetKEA AS
-       SELECT ID, ProjectSummaryID, TargetID, TargetXID, KeyEcologicalAttributeID AS KEAID,
-              KeyEcologicalAttributeXID AS KEAXID
-         FROM TargetKeyEcologicalAttribute;
-
+DROP VIEW IF EXISTS v_TargetKeyAttribute;     -- Joins TargetKeyEcologicalAttribute with v_KeyAttribute.
+CREATE VIEW v_TargetKeyAttribute AS
+       SELECT TargetID, TargetXID, KEA.*
+         FROM TargetKeyEcologicalAttribute TgtKEA, v_KeyAttribute KEA
+        WHERE KEA.ID = TgtKEA.KeyEcologicalAttributeID;
+ 
 
 DROP VIEW IF EXISTS BiodiversityTargetKeyEcologicalAttribute;
 CREATE VIEW BiodiversityTargetKeyEcologicalAttribute AS
-       SELECT KEA.ID, KEA.ProjectSummaryID,KEA.TargetID AS BiodiversityTargetID,
+       SELECT KEA.ID, KEA.ProjectSummaryID, KEA.TargetID AS BiodiversityTargetID,
               KEA.TargetXID AS BiodiversityTargetXID, KeyEcologicalAttributeID,
               KeyEcologicalAttributeXID
          FROM TargetKeyEcologicalAttribute KEA, BiodiversityTarget Tgt
@@ -1123,14 +1114,11 @@ CREATE VIEW BiodiversityTargetKeyEcologicalAttribute AS
 
 
 
-DROP VIEW IF EXISTS v_BiodiversityTargetKEA;
-CREATE VIEW v_BiodiversityTargetKEA AS
-       SELECT KEA.ID, KEA.ProjectSummaryID, KEA.TargetID AS BiodiversityTargetID,
-              KEA.TargetXID AS BiodiversityTargetXID, KeyEcologicalAttributeID AS KEAID,
-              KeyEcologicalAttributeXID AS KEAXID
-         FROM TargetKeyEcologicalAttribute KEA, BiodiversityTarget Tgt
-        WHERE Tgt.ProjectSummaryID = KEA.ProjectSummaryID
-          AND Tgt.XID = KEA.TargetXID;
+DROP VIEW IF EXISTS v_BiodiversityTargetKeyAttribute; -- Joins BiodiversityTargetKeyEcologicalAttribute 
+CREATE VIEW v_BiodiversityTargetKeyAttribute AS       -- with v_KeyAttribute.
+       SELECT BiodiversityTargetID, BiodiversityTargetXID, KEA.*
+         FROM BiodiversityTargetKeyEcologicalAttribute TgtKEA, v_KeyAttribute KEA
+        WHERE KEA.ID = TgtKEA.KeyEcologicalAttributeID;
 
 
 DROP VIEW IF EXISTS HumanWelfareTargetKeyEcologicalAttribute;
@@ -1143,15 +1131,11 @@ CREATE VIEW HumanWelfareTargetKeyEcologicalAttribute AS
           AND Tgt.XID = KEA.TargetXID;
 
 
-DROP VIEW IF EXISTS v_HumanWelfareTargetKEA;
-CREATE VIEW v_HumanWelfareTargetKEA AS
-       SELECT KEA.ID, KEA.ProjectSummaryID, KEA.TargetID AS HumanWelfareTargetID,
-              KEA.TargetXID AS HumanWelfareTargetXID, KeyEcologicalAttributeId AS KEAID,
-              KeyEcologicalAttributeXID AS KEAXID
-         FROM TargetKeyEcologicalAttribute KEA, HumanWelfareTarget Tgt
-        WHERE Tgt.ProjectSummaryID = KEA.ProjectSummaryID
-          AND Tgt.XID = KEA.TargetXID;
-
+DROP VIEW IF EXISTS v_HumanWelfareTargetKeyAttribute; -- Joins HumanWelfareTargetKeyEcologicalAttribute 
+CREATE VIEW v_HumanWelfareTargetKeyAttribute AS       -- with v_KeyAttribute.
+       SELECT HumanWelfareTargetID, HumanWelfareTargetXID, KEA.*
+         FROM HumanWelfareTargetKeyEcologicalAttribute TgtKEA, v_KeyAttribute KEA
+        WHERE KEA.ID = TgtKEA.KeyEcologicalAttributeID;
 
 
 DROP TABLE IF EXISTS Indicator;
@@ -1206,6 +1190,13 @@ CREATE TABLE TargetIndicator
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_TargetIndicator;          -- Joins TargetIndicator with Indicator.
+CREATE VIEW v_TargetIndicator AS
+       SELECT TargetID, TargetXID, Ind.*
+         FROM TargetIndicator TgtInd, Indicator Ind
+        WHERE Ind.ID = TgtInd.IndicatorID; 
+
+
 DROP VIEW IF EXISTS BiodiversityTargetIndicator;
 CREATE VIEW BiodiversityTargetIndicator AS
        SELECT Ind.ID, Ind.ProjectSummaryID, Ind.TargetID AS BiodiversityTargetID,
@@ -1216,6 +1207,13 @@ CREATE VIEW BiodiversityTargetIndicator AS
 
 
 
+DROP VIEW IF EXISTS v_BiodiversityTargetIndicator;  -- Joins BiodiversityTargetIndicator with Indicator.
+CREATE VIEW v_BiodiversityTargetIndicator AS
+       SELECT BiodiversityTargetID, BiodiversityTargetXID, Ind.*
+         FROM BiodiversityTargetIndicator TgtInd, Indicator Ind
+        WHERE Ind.ID = TgtInd.IndicatorID; 
+
+
 DROP VIEW IF EXISTS HumanWelfareTargetIndicator;
 CREATE VIEW HumanWelfareTargetIndicator AS
        SELECT Ind.ID, Ind.ProjectSummaryID, Ind.TargetID AS HumanWelfareTargetID,
@@ -1224,6 +1222,12 @@ CREATE VIEW HumanWelfareTargetIndicator AS
         WHERE Tgt.ProjectSummaryID = Ind.ProjectSummaryID
           AND Tgt.XID = Ind.TargetXID;
 
+
+DROP VIEW IF EXISTS v_HumanWelfareTargetIndicator; -- Joins HumanWelfareTargetIndicator with Indicator.
+CREATE VIEW v_HumanWelfareTargetIndicator AS
+       SELECT HumanWelfareTargetID, HumanWelfareTargetXID, Ind.*
+         FROM HumanWelfareTargetIndicator TgtInd, Indicator Ind
+        WHERE Ind.ID = TgtInd.IndicatorID; 
 
 
 DROP TABLE IF EXISTS KeyEcologicalAttributeIndicator;
@@ -1242,11 +1246,12 @@ CREATE TABLE KeyEcologicalAttributeIndicator
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-DROP VIEW IF EXISTS v_KEAIndicator;
-CREATE VIEW v_KEAIndicator AS
-       SELECT ID,ProjectSummaryID, KeyEcologicalAttributeID AS KEAID,
-              KeyEcologicalAttributeXID AS KEAXID, IndicatorID, IndicatorXID
-         FROM KeyEcologicalAttributeIndicator;
+DROP VIEW IF EXISTS v_KeyAttributeIndicator; -- Joins KeyEcologicalAttributeIndicator with Indicator.
+CREATE VIEW v_KeyAttributeIndicator AS
+       SELECT KeyEcologicalAttributeID AS KeyAttributeID, 
+              KeyEcologicalAttributeXID AS KeyAttributeXID, Ind.*
+         FROM KeyEcologicalAttributeIndicator KeaInd, Indicator Ind
+        WHERE Ind.ID = KeaInd.IndicatorID;
 
 
 DROP TABLE IF EXISTS IndicatorThreshold;
@@ -1282,8 +1287,8 @@ CREATE TABLE Measurement                  -- Objects-32
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-DROP TABLE IF EXISTS IndicatorMeasurement;
-CREATE TABLE IndicatorMeasurement
+DROP TABLE IF EXISTS IndicatorMeasurement;              -- View v_IndicatorMeasurement follows
+CREATE TABLE IndicatorMeasurement                       -- CREATE FUNCTION RATING();
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  IndicatorID INTEGER NOT NULL DEFAULT 0,
@@ -1390,7 +1395,8 @@ CREATE VIEW IndicatorCalculatedWorkUnits AS
               BudgetCategoryTwoXID
          FROM CalculatedWorkUnits Units, Indicator Ind
         WHERE Ind.ProjectSummaryID = Units.ProjectSummaryID
-          AND Ind.XID = Units.FactorXID;
+          AND Ind.XID = Units.FactorXID
+          AND Units.Factor = "Indicator";
 
 
 DROP VIEW IF EXISTS IndicatorCalculatedWho;
@@ -1425,7 +1431,8 @@ CREATE VIEW IndicatorCalculatedExpense AS
               AccountingCodeXID,BudgetCategoryOneXID,BudgetCategoryTwoXID
          FROM CalculatedExpense Exp, Indicator Ind
         WHERE Ind.ProjectSummaryID = Exp.ProjectSummaryID
-          AND Ind.XID = Exp.FactorXID;
+          AND Ind.XID = Exp.FactorXID
+          AND Exp.Factor = "Indicator";
 
 
 DROP TABLE IF EXISTS Strategy;
@@ -1490,6 +1497,13 @@ CREATE TABLE StrategyAssignment
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_StrategyAssignment;     /* Joins StrategyAssignment with ResourceAssignment. */
+CREATE VIEW v_StrategyAssignment AS
+       SELECT StrategyID, StrategyXID, Asgn.*
+         FROM StrategyAssignment StrAsgn, ResourceAssignment Asgn
+        WHERE Asgn.ID = StrAsgn.ResourceAssignmentID; 
+
+
 DROP VIEW IF EXISTS StrategyCalculatedWorkUnits;
 CREATE VIEW StrategyCalculatedWorkUnits AS
        SELECT Units.ID,Units.ProjectSummaryID,Units.XID,Factor,FactorID AS StrategyID,
@@ -1499,7 +1513,8 @@ CREATE VIEW StrategyCalculatedWorkUnits AS
               BudgetCategoryTwoXID
          FROM CalculatedWorkUnits Units, Strategy Str
         WHERE Str.ProjectSummaryID = Units.ProjectSummaryID
-          AND Str.XID = Units.FactorXID;
+          AND Str.XID = Units.FactorXID
+          AND Units.Factor = "Strategy";
 
 
 DROP VIEW IF EXISTS StrategyCalculatedWho;
@@ -1526,6 +1541,13 @@ CREATE TABLE StrategyExpense
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP TABLE IF EXISTS v_StrategyExpense;
+CREATE VIEW v_StrategyExpense AS
+       SELECT StrategyID, StrategyXID, Exp.*
+         FROM StrategyExpense StrExp, ExpenseAssignment Exp
+        WHERE Exp.ID = StrExp.ExpenseAssignmentID; 
+
+
 DROP VIEW IF EXISTS StrategyCalculatedExpense;
 CREATE VIEW StrategyCalculatedExpense AS
        SELECT Exp.ID,Exp.ProjectSummaryID,Exp.XID,Factor,FactorID AS StrategyID,
@@ -1534,7 +1556,8 @@ CREATE VIEW StrategyCalculatedExpense AS
               BudgetCategoryOneXID,BudgetCategoryTwoID,BudgetCategoryTwoXID
          FROM CalculatedExpense Exp, Strategy Str
         WHERE Str.ProjectSummaryID = Exp.ProjectSummaryID
-          AND Str.XID = Exp.FactorXID;
+          AND Str.XID = Exp.FactorXID
+          AND Exp.Factor = "Strategy";
 
 
 DROP TABLE IF EXISTS StrategyIndicator;
@@ -1624,6 +1647,13 @@ CREATE TABLE StrategyActivity
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_StrategyActivity;     -- Joins StrategyActivity with Activity
+CREATE VIEW v_StrategyActivity AS
+       SELECT StrategyID, StrategyXID, Sequence, Act.*
+         FROM StrategyActivity StrAct, Activity Act
+        WHERE Act.ID = StrAct.ActivityID; 
+
+
 DROP VIEW IF EXISTS Task;                   /* Methods, Activities, and Tasks are all contained
                                                in the Task Pool with only the forward pointer of
                                                the Parent Object to differentiate them.
@@ -1637,7 +1667,7 @@ CREATE VIEW Task AS
               Name, Details, Comments, CalculatedStartDate, CalculatedEndDate,
               CalculatedWorkUnitsTotal, CalculatedExpenseTotal,
               CalculatedTotalBudgetCost
- FROM TaskActivityMethod                 
+         FROM TaskActivityMethod                 
         WHERE Factor = "Task";
 
 
@@ -1671,7 +1701,8 @@ CREATE TABLE SubTask
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-CREATE VIEW TaskSubTask AS                /* IMPORTANT NOTE: The desired sequence to retrieve
+DROP VIEW IF EXISTS TaskSubTask;
+CREATE VIEW TaskSubTask AS                  /* IMPORTANT NOTE: The desired sequence to retrieve
                                                TaskSubtask is the physical sequence their
                                                associations were exported in the XML.
                                                That sequence can be robustly assured with
@@ -1683,6 +1714,14 @@ CREATE VIEW TaskSubTask AS                /* IMPORTANT NOTE: The desired sequenc
         WHERE Subtask.ProjectSummaryID = Task.ProjectSummaryID
           AND Subtask.TaskXID = Task.XID;
 
+
+DROP VIEW IF EXISTS v_TaskSubTask;
+CREATE VIEW v_TaskSubTask AS
+       SELECT TaskID, TaskXID, Sequence, Task.*
+         FROM TaskSubTask, Task
+        WHERE Task.ProjectSummaryID = TaskSubTask.ProjectSummaryID
+          AND Task.XID = TaskSubTask.TaskXID;
+          
 
 DROP VIEW IF EXISTS ActivityTask;
 CREATE VIEW ActivityTask AS                 /* IMPORTANT NOTE: The desired sequence to retrieve
@@ -1700,17 +1739,25 @@ CREATE VIEW ActivityTask AS                 /* IMPORTANT NOTE: The desired seque
           AND Subtask.TaskXID = Act.XID;
 
 
+DROP VIEW IF EXISTS v_ActivityTask;
+CREATE VIEW v_ActivityTask AS
+       SELECT ActivityID, ActivityXID, Sequence, Task.*
+         FROM ActivityTask ActTask, Task
+        WHERE Task.ProjectSummaryID = ActTask.ProjectSummaryID
+          AND Task.XID = ActTask.TaskXID;
+          
+
 DROP VIEW IF EXISTS MethodTask;
 CREATE VIEW MethodTask AS                   /* IMPORTANT NOTE: The desired sequence to retrieve
-                                               ActivityTask is the physical sequence their
+                                               MethodTask is the physical sequence their
                                                associations were exported in the XML.
                                                That sequence can be robustly assured with
-                                               SELECT ... ORDER BY ActivityTask.Sequence;
+                                               SELECT ... ORDER BY MethodTask.Sequence;
                                             */
 
-       SELECT Subtask.ID, Subtask.ProjectSummaryID, Subtask.TaskID AS MethodID,
-              Subtask.TaskXID AS MethodXID, Subtask.Sequence, 
-              Subtask.SubtaskRef AS TaskXID
+       SELECT SubTask.ID, Subtask.ProjectSummaryID, SubTask.TaskID AS MethodID,
+              SubTask.TaskXID AS MethodXID, SubTask.Sequence, 
+              SubTask.SubTaskRef AS TaskXID
          FROM Method AS Meth, SubTask
         WHERE Subtask.ProjectSummaryID = Meth.ProjectSummaryID
           AND Subtask.TaskXID = Meth.XID;
@@ -1786,6 +1833,13 @@ CREATE VIEW TaskAssignment AS
          FROM TaskActivityMethodAssignment Asgn, Task
         WHERE Task.ProjectSummaryID = Asgn.ProjectSummaryID
           AND Task.XID = Asgn.TaskActivityMethodXID;
+          
+          
+DROP VIEW IF EXISTS v_TaskAssignment;
+CREATE VIEW v_TaskAssignment AS
+       SELECT TaskID, TaskXID, Asgn.*
+         FROM TaskAssignment TaskAsgn, ResourceAssignment Asgn
+        WHERE Asgn.ID = TaskAsgn.ResourceAssignmentID; 
 
 
 DROP VIEW IF EXISTS ActivityAssignment;
@@ -1798,6 +1852,13 @@ CREATE VIEW ActivityAssignment AS
           AND Act.XID = Asgn.TaskActivityMethodXID;
 
 
+DROP VIEW IF EXISTS v_ActivityAssignment;
+CREATE VIEW v_ActivityAssignment AS
+       SELECT ActivityID, ActivityXID, Asgn.*
+         FROM ActivityAssignment ActAsgn, ResourceAssignment Asgn
+        WHERE Asgn.ID = ActAsgn.ResourceAssignmentID; 
+
+
 DROP VIEW IF EXISTS MethodAssignment;
 CREATE VIEW MethodAssignment AS
        SELECT Asgn.ID, Asgn.ProjectSummaryID, Asgn.TaskActivityMethodID AS MethodID, 
@@ -1808,6 +1869,14 @@ CREATE VIEW MethodAssignment AS
           AND Meth.XID = Asgn.TaskActivityMethodXID;
 
 
+DROP VIEW IF EXISTS v_MethodAssignment;
+CREATE VIEW v_MethodAssignment AS
+       SELECT MethodID, MethodXID, Asgn.*
+         FROM MethodAssignment MethAsgn, ResourceAssignment Asgn
+        WHERE Asgn.ID = MethAsgn.ResourceAssignmentID; 
+
+
+/*
 DROP VIEW IF EXISTS TaskActivityMethodCalculatedWorkUnits;
 CREATE VIEW TaskActivityMethodCalculatedWorkUnits AS
        SELECT Units.ID, Units.ProjectSummaryID, Units.XID, Units.Factor,
@@ -1818,7 +1887,7 @@ CREATE VIEW TaskActivityMethodCalculatedWorkUnits AS
               BudgetCategoryTwoID,BudgetCategoryTwoXID
          FROM CalculatedWorkUnits Units
         WHERE Factor IN ("Task","Activity","Method");
-
+*/
 
 DROP VIEW IF EXISTS TaskCalculatedWorkUnits;
 CREATE VIEW TaskCalculatedWorkUnits AS
@@ -1829,7 +1898,8 @@ CREATE VIEW TaskCalculatedWorkUnits AS
               BudgetCategoryTwoID,BudgetCategoryTwoXID
          FROM CalculatedWorkUnits Units, Task
         WHERE Task.ProjectSummaryID = Units.ProjectSummaryID
-          AND Task.XID = Units.FactorXID;
+          AND Task.XID = Units.FactorXID
+          AND Units.Factor = "Task";
 
 
 DROP VIEW IF EXISTS ActivityCalculatedWorkUnits;
@@ -1841,7 +1911,8 @@ CREATE VIEW ActivityCalculatedWorkUnits AS
               BudgetCategoryTwoXID
          FROM CalculatedWorkUnits Units, Activity Act
         WHERE Act.ProjectSummaryID = Units.ProjectSummaryID
-          AND Act.XID = Units.FactorXID;
+          AND Act.XID = Units.FactorXID
+          AND Units.Factor = "Activity";
 
 
 DROP VIEW IF EXISTS MethodCalculatedWorkUnits;
@@ -1853,9 +1924,10 @@ CREATE VIEW MethodCalculatedWorkUnits AS
               BudgetCategoryTwoXID
          FROM CalculatedWorkUnits Units, Method Meth
         WHERE Meth.ProjectSummaryID = Units.ProjectSummaryID
-          AND Meth.XID = Units.FactorXID;
+          AND Meth.XID = Units.FactorXID
+          AND Units.Factor = "Method";
 
-
+/*
 DROP VIEW IF EXISTS TaskActivityMethodCalculatedWho;
 CREATE VIEW TaskActivityMethodCalculatedWho AS
        SELECT Who.ID, Who.ProjectSummaryID, Factor,
@@ -1863,7 +1935,7 @@ CREATE VIEW TaskActivityMethodCalculatedWho AS
               ProjectResourceID, ProjectResourceXID
          FROM CalculatedWho Who
         WHERE Factor IN ("Task","Activity","Method");
-
+*/
 
 DROP VIEW IF EXISTS TaskCalculatedWho;
 CREATE VIEW TaskCalculatedWho AS
@@ -1875,16 +1947,16 @@ CREATE VIEW TaskCalculatedWho AS
 
 DROP VIEW IF EXISTS ActivityCalculatedWho;
 CREATE VIEW ActivityCalculatedWho AS
-       SELECT Who.ID,Who.ProjectSummaryID,Factor,FactorID AS ActivityID,
-              FactorXID AS ActivityXID,ProjectResourceID,ProjectResourceXID
+       SELECT Who.ID, Who.ProjectSummaryID, Factor, FactorID AS ActivityID,
+              FactorXID AS ActivityXID, ProjectResourceID, ProjectResourceXID
          FROM CalculatedWho Who
         WHERE Factor = "Activity";
 
 
 DROP VIEW IF EXISTS MethodCalculatedWho;
 CREATE VIEW MethodCalculatedWho AS
-       SELECT Who.ID,Who.ProjectSummaryID,Factor,FactorID AS MethodID,
-              FactorXID AS MethodXID,ProjectResourceID,ProjectResourceXID
+       SELECT Who.ID, Who.ProjectSummaryID, Factor, FactorID AS MethodID,
+              FactorXID AS MethodXID, ProjectResourceID, ProjectResourceXID
          FROM CalculatedWho Who
         WHERE Factor = "Method";
 
@@ -1909,10 +1981,17 @@ DROP VIEW IF EXISTS TaskExpense;
 CREATE VIEW TaskExpense AS
        SELECT Exp.ID, Exp.ProjectSummaryID, Exp.TaskActivityMethodID AS TaskID, 
               Exp.TaskActivityMethodXID AS TaskXID,
-              ExpenseAssignmentID,ExpenseAssignmentXID
+              ExpenseAssignmentID, ExpenseAssignmentXID
          FROM TaskActivityMethodExpense Exp, Task
         WHERE Task.ProjectSummaryID = Exp.ProjectSummaryID
           AND Task.XID = Exp.TaskActivityMethodXID;
+
+
+DROP VIEW IF EXISTS v_TaskExpense;
+CREATE VIEW v_TaskExpense AS
+       SELECT TaskID, TaskXID, Exp.*
+         FROM TaskExpense TaskExp, ExpenseAssignment Exp
+        WHERE Exp.ID = TaskExp.ExpenseAssignmentID; 
 
 
 DROP VIEW IF EXISTS ActivityExpense;
@@ -1925,16 +2004,30 @@ CREATE VIEW ActivityExpense AS
           AND Act.XID = Exp.TaskActivityMethodXID;
 
 
+DROP VIEW IF EXISTS v_ActivityExpense;
+CREATE VIEW v_ActivityExpense AS
+       SELECT ActivityID, ActivityXID, Exp.*
+         FROM ActivityExpense ActExp, ExpenseAssignment Exp
+        WHERE Exp.ID = ActExp.ExpenseAssignmentID; 
+
+
 DROP VIEW IF EXISTS MethodExpense;
 CREATE VIEW MethodExpense AS
        SELECT Exp.ID, Exp.ProjectSummaryID, Exp.TaskActivityMethodID AS MethodID, 
               Exp.TaskActivityMethodXID AS MethodXID,
-              ExpenseAssignmentID,ExpenseAssignmentXID
+              ExpenseAssignmentID, ExpenseAssignmentXID
          FROM TaskActivityMethodExpense Exp, Method Meth
         WHERE Meth.ProjectSummaryID = Exp.ProjectSummaryID
           AND Meth.XID = Exp.TaskActivityMethodXID;
 
 
+DROP VIEW IF EXISTS v_MethodExpense;
+CREATE VIEW v_MethodExpense AS
+       SELECT MethodID, MethodXID, Exp.*
+         FROM MethodExpense MethExp, ExpenseAssignment Exp
+        WHERE Exp.ID = MethExp.ExpenseAssignmentID; 
+
+/*
 DROP VIEW IF EXISTS TaskActivityMethodCalculatedExpense;
 CREATE VIEW TaskActivityMethodCalculatedExpense AS
        SELECT Exp.ID, Exp.ProjectSummaryID, Exp.XID, Exp.Factor,
@@ -1945,7 +2038,7 @@ CREATE VIEW TaskActivityMethodCalculatedExpense AS
               BudgetCategoryTwoXID
          FROM CalculatedExpense Exp
         WHERE Factor IN ("Task","Activity","Method");
-
+*/
 
 DROP VIEW IF EXISTS TaskCalculatedExpense;
 CREATE VIEW TaskCalculatedExpense AS
@@ -1956,7 +2049,8 @@ CREATE VIEW TaskCalculatedExpense AS
               BudgetCategoryTwoXID
          FROM CalculatedExpense Exp, Task
         WHERE Task.ProjectSummaryID = Exp.ProjectSummaryID
-          AND Task.XID = Exp.FactorXID;
+          AND Task.XID = Exp.FactorXID
+          AND Exp.Factor = "Task";
 
 
 DROP VIEW IF EXISTS ActivityCalculatedExpense;
@@ -1967,7 +2061,8 @@ CREATE VIEW ActivityCalculatedExpense AS
               BudgetCategoryOneXID,BudgetCategoryTwoID,BudgetCategoryTwoXID
          FROM CalculatedExpense Exp, Activity Act
         WHERE Act.ProjectSummaryID = Exp.ProjectSummaryID
-          AND Act.XID = Exp.FactorXID;
+          AND Act.XID = Exp.FactorXID
+          AND Exp.Factor = "Activity";
 
 
 DROP VIEW IF EXISTS MethodCalculatedExpense;
@@ -1978,7 +2073,8 @@ CREATE VIEW MethodCalculatedExpense AS
               BudgetCategoryOneXID,BudgetCategoryTwoID,BudgetCategoryTwoXID
          FROM CalculatedExpense Exp, Method Meth
         WHERE Meth.ProjectSummaryID = Exp.ProjectSummaryID
-          AND Meth.XID = Exp.FactorXID;
+          AND Meth.XID = Exp.FactorXID
+          AND Exp.Factor = "Method";
 
 
 DROP TABLE IF EXISTS Objective;
@@ -2057,6 +2153,13 @@ CREATE TABLE ObjectiveRelevantIndicator
  CONSTRAINT FOREIGN KEY (IndicatorID) REFERENCES Indicator(ID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+DROP VIEW IF EXISTS v_ObjectiveIndicator;        -- Joins ObjectiveRelevantIndicator with Indicator.
+CREATE VIEW v_ObjectiveIndicator AS
+       SELECT ObjectiveID, ObjectiveXID, Ind.*
+         FROM ObjectiveRelevantIndicator Obj, Indicator Ind
+        WHERE Ind.ID = Obj.IndicatorID; 
 
 
 DROP TABLE IF EXISTS GoalRelevantIndicator;
@@ -2310,8 +2413,8 @@ CREATE TABLE Cause                        -- Objects-20
 
 DROP VIEW IF EXISTS Threat;
 CREATE VIEW Threat AS
-       SELECT ID,ProjectSummaryID,XID,Cause_Id AS Threat_Id,Name,Details,
-              Comments,IsDirectThreat,StandardClassification ,ThreatRating
+       SELECT ID, ProjectSummaryID, XID, Cause_Id AS Threat_Id, Name,Details,
+              Comments, IsDirectThreat, StandardClassification, ThreatRating
          FROM Cause WHERE IsDirectThreat = TRUE;
 
 
@@ -2331,11 +2434,12 @@ CREATE TABLE CauseIndicator
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-DROP VIEW IF EXISTS v_ThreatIndicator;
+DROP VIEW IF EXISTS v_ThreatIndicator;               -- Joins CauseIndicator with Indicator.
 CREATE VIEW v_ThreatIndicator AS
-       SELECT ProjectSummaryID, CauseID AS ThreatID, CauseXID AS ThreatXID,
-              IndicatorID, IndicatorXID
-         FROM CauseIndicator;
+       SELECT CauseID AS ThreatID, CauseXID AS ThreatXID, Ind.*
+         FROM Threat Thr, CauseIndicator ThrInd, Indicator Ind
+        WHERE Ind.ID = ThrInd.IndicatorID
+          AND ThrInd.CauseID = Thr.ID;
 
 
 DROP TABLE IF EXISTS CauseObjective;
@@ -2626,9 +2730,9 @@ CREATE TABLE DiagramLink                  -- Objects-6
  ProjectSummaryID INTEGER NOT NULL,
  XID INTEGER NOT NULL,
  Name TEXT,
- DiagramLinkFromDiagramFactor VARCHAR(255),
+ DiagramLinkFromDiagramFactor VARCHAR(25),
  DiagramLinkFromDiagramFactorXID INTEGER NOT NULL,
- DiagramLinkToDiagramFactor VARCHAR(255),
+ DiagramLinkToDiagramFactor VARCHAR(25),
  DiagramLinkToDiagramFactorXID INTEGER NOT NULL,
  Color ENUM("black","darkGray","red","DarkOrange","DarkYellow","darkGreen","darkBlue",
             "DarkPurple","brown","lightGray","White","pink","orange","yellow","lightGreen",
@@ -2814,7 +2918,7 @@ CREATE TABLE TaggedObjectSetFactor
  ProjectSummaryID INTEGER NOT NULL,
  TaggedObjectSetID INTEGER NOT NULL DEFAULT 0,
  TaggedObjectSetXID INTEGER NOT NULL,
- WrappedByDiagramFactor VARCHAR(255) NOT NULL,
+ WrappedByDiagramFactor VARCHAR(25) NOT NULL,
  WrappedByDiagramFactorXID INTEGER NOT NULL,
  INDEX (ProjectSummaryID, TaggedObjectSetXID),
  INDEX (ProjectSummaryID, WrappedByDiagramFactorXID, WrappedByDiagramFactor),
@@ -3242,18 +3346,20 @@ CREATE TABLE WWFRegionsList
 
 DROP TABLE IF EXISTS MiradiTables;
 CREATE TABLE MiradiTables
-(TableName VARCHAR(255))
+(TableName VARCHAR(255),
+ TableType CHAR(5)
+)
 ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 INSERT INTO MiradiTables
-       SELECT TABLE_NAME
+       SELECT TABLE_NAME, RIGHT(Table_Type,5)
          FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = (SELECT DATABASE());
 
 CREATE INDEX Tbl_IX1 ON MiradiTables(TableName);
 ANALYZE TABLE MiradiTables;
 
-
+           
 /* User-Defined Functions */
 
 /* Function RATING()
@@ -3280,6 +3386,18 @@ END;
 //
 
 DELIMITER ;
+
+
+DROP VIEW IF EXISTS v_IndicatorMeasurement;     /* Joins IndicatorMeasurement and Measurement,
+                                                   including the RATING() value of Measurement.Rating
+                                                   
+                                                   Has to follow function RATING(). 
+                                                */
+CREATE VIEW v_IndicatorMeasurement AS
+       SELECT IndicatorID, IndicatorXID, Meas.*, RATING(Rating) AS IndicatorRating
+         FROM IndicatorMeasurement Ind, Measurement Meas
+        WHERE Meas.ID = Ind.MeasurementID;
+
 
 /* Function RANK()
 
@@ -3344,7 +3462,7 @@ DROP FUNCTION IF EXISTS fn_CalcWho;
 
 DELIMITER //
 
-CREATE FUNCTION fn_CalcWho (fProjectSummaryID INTEGER,fFactor VARCHAR(255),fFactorID INTEGER)
+CREATE FUNCTION fn_CalcWho (fProjectSummaryID INTEGER,fFactor VARCHAR(25),fFactorID INTEGER)
                    RETURNS VARCHAR(255)
 BEGIN
 
@@ -3367,7 +3485,9 @@ WHILE TRUE DO
       FETCH c_who INTO fResource_Id;
       IF EOF THEN RETURN TRIM(TRAILING ", " FROM fResource_Ids); END IF;
       SET fResource_Ids = CONCAT(fResource_Ids,
-                                 CASE WHEN fResource_ID IS NULL THEN "" ELSE fResource_Id END,", "
+                                 CASE WHEN fResource_Id IS NULL 
+                                      THEN "" ELSE fResource_Id 
+                                  END,", "
                                 );
 END WHILE;
 CLOSE c_who;
@@ -3378,28 +3498,137 @@ END;
 DELIMITER ;
 
 
-DROP VIEW IF EXISTS v_IndicatorMeasurement;
-CREATE VIEW v_IndicatorMeasurement AS
-       SELECT Ind.ProjectSummaryID, IndicatorID, IndicatorXID, Ind.MeasurementID,
-              Ind.MeasurementXID, Name, Date, Source, MeasurementValue, RATING(Rating),
-              Trend, Detail, Comments
-        FROM IndicatorMeasurement Ind, Measurement Meas
-       WHERE Meas.ID = Ind.MeasurementID;
+/* fn_StripTags.sql
+
+   Strip formatting tags from a text string.
+   Based on http://www.artfulsoftware.com/infotree/queries.php#567.
+   
+*/
+
+DELIMITER $$ 
+
+DROP FUNCTION IF EXISTS fn_StripTags $$
+
+CREATE FUNCTION fn_StripTags (TextString TEXT) RETURNS TEXT
+DETERMINISTIC  
+BEGIN 
+  DECLARE fStart, fEnd, fLENGTH INTEGER; 
+  
+  SET fStart = LOCATE( "<", TextString );
+  
+  IF   fStart > 0 THEN
+       SET fEnd = LOCATE( ">", TextString, fStart); 
+       SET fLength = fEnd - fStart + 1;
+  ELSE SET fEnd = 0, fLength = 0;
+  END IF;
+  
+  WHILE fLength > 0 DO 
+        SET TextString = Insert( TextString, fStart, fLength, ""); 
+        SET fStart = LOCATE( "<", TextString );
+  
+        IF   fStart > 0 THEN
+             SET fEnd = LOCATE( ">", TextString, fStart); 
+             SET fLength = fEnd - fStart + 1;
+        ELSE SET fEnd = 0, fLength = 0;
+        END IF;
+        
+  END WHILE; 
+  
+  RETURN TextString; 
+END $$ 
+
+DELIMITER ; 
 
 
 /*
-   sp_DeleteProject_v1.sql
+   fn_ExpenseName _v3.sql
+
+   Function to list all Expense Assignment Names that are associated with a 
+   common set of Dimensions (whose IDs are parameters to the function) for
+   a particular Factor (e.g. Strategy or Activity).
+   
+   Designed specifically to support sp_AccountPlan, that reports an
+   expense/budget plan by Factor within Account.
+   
+   Revision History:
+   Version 03 - 2012-03-01 - Abandon new view and use exclusive left joins instead. The view 
+                             created the risk of Server Error 1267 - Invalid mix of collations.
+   Version 02 - 2012-02-29 - Use new view FactorExpense which UNIONs all Factor Expesne Associations.
+                           - Limit total length of each Expense Name to 255.
+                           - Change delimiter between expense names to ';'.
+   Version 01 - 2012-02-28 - Initial Version.
+*/
+
+DROP FUNCTION IF EXISTS fn_ExpenseName;
+
+DELIMITER $$
+
+CREATE FUNCTION fn_ExpenseName (fFactor VARCHAR(25), fFactorID INTEGER,
+                                fAccountingCodeID INTEGER, fFundingSourceID INTEGER,
+                                fBudgetCategoryOneID INTEGER, fBudgetCategoryTwoID INTEGER
+                               ) RETURNS TEXT
+BEGIN
+
+DECLARE fExpenseName VARCHAR(255) DEFAULT "";
+DECLARE fExpenseNames TEXT DEFAULT "";
+DECLARE EOF BOOLEAN DEFAULT FALSE;
+
+DECLARE c_Exp CURSOR FOR
+        SELECT LEFT(Exp.Name,255)
+          FROM ExpenseAssignment Exp 
+          
+                  LEFT JOIN StrategyExpense StrExp
+                    ON StrExp.ExpenseAssignmentID = Exp.ID
+                   AND StrExp.StrategyID = fFactorID
+                   AND fFactor = "Strategy"
+                   
+                  LEFT JOIN TaskActivityMethodExpense ActExp
+                    ON ActExp.ExpenseAssignmentID = Exp.ID
+                   AND ActExp.TaskActivityMethodID = fFactorID
+                   AND fFactor IN ("Task","Activity","Method")
+                   
+                  LEFT JOIN IndicatorExpense IndExp
+                    ON IndExp.ExpenseAssignmentID = Exp.ID
+                   AND IndExp.IndicatorID = fFactorID
+                   AND fFactor = "Indicator"
+                   
+         WHERE Exp.AccountingCodeID <=> fAccountingCodeId 
+           AND Exp.FundingSourceID <=> fFundingSourceId 
+           AND Exp.BudgetCategoryOneID <=> fBudgetCategoryOneId 
+           AND Exp.BudgetCategoryTwoID <=> fBudgetCategoryTwoId
+           AND CASE WHEN fFactor = "Strategy" THEN StrategyID
+                    WHEN fFactor IN ("Task","Activity","Method") THEN TaskActivityMethodID
+                    WHEN fFactor = "Indicator" THEN IndicatorID
+                END = fFactorID;
+
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET EOF = TRUE;
+
+OPEN c_Exp;
+WHILE TRUE DO
+      FETCH c_Exp INTO fExpenseName;
+      IF EOF THEN RETURN TRIM(TRAILING "; " FROM fExpenseNames); END IF;
+      SET fExpenseNames = CONCAT(fExpenseNames,fExpenseName,"; ");
+END WHILE;
+
+END $$
+
+DELIMITER ;
+
+/*
+   sp_DeleteProject_v2.sql
 
    Delete entire projects from the Miradi database by ProjectSummaryID.
+   
+   CALL sp_DeleteProject(nn), where nn = ProjectSummaryID.
+   
    If you specify ProjectSummaryID = 0, all projects will be deleted!
 
    Developed by David Berg for The Nature Conservancy.
 
    Revision History:
+   Version 02 - 2011-11-09 - Add table MiradiColumns to exclusion list.
    Version 01 - 2010-12-27 - Initial Version.
 */
-
-USE Miradi;
 
 DELIMITER $$
 
@@ -3418,7 +3647,7 @@ BEGIN
                 FROM information_schema.TABLES
                WHERE TABLE_SCHEMA = DATABASE()
                  AND TABLE_TYPE = "BASE TABLE"
-                 AND TABLE_NAME NOT IN ("ProjectID","MiradiTables");
+                 AND TABLE_NAME NOT IN ("ProjectID","MiradiTables","MiradiColumns","XMPZSchema");
 
       DECLARE CONTINUE HANDLER FOR NOT FOUND SET EOF = TRUE;
 

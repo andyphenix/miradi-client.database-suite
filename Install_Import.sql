@@ -1,5 +1,5 @@
 /*
-   Install_Import_v7.sql
+   Install_Import_v9a.sql
    
    Installs the stored procedures used to import projects into the Miradi Database.
    
@@ -9,6 +9,14 @@
         and the Greater Conservation Community.
    
    Revision History:
+   Version 9a - 2012-03-20 - Correct bug in Iterate_XML() as documented therein.
+   Version 09 - 2012-03-05 - Consolidate ANALYZE TABLE Statements.
+   Version 08 - 2012-02-11 - Change the order of REPLACE parameters for the ANALYZE TABLE statements
+                             so that ThreatReductionResult gets REPLACEd with RESULT before 
+                             Threat gets REPLACEd with Cause.
+                           - Add FiscalYear to DateUnitWorkUnits, DateUnitExpense.
+                           - Compute StartYear and StartMonth for Daily and Full Project 
+                             assignments/expenses.
    Version 07 - 2011-12-12 - Account for the possible condition of a null object among a set of like objects,
                              which inadvertently causes the multiple value flag (Flag 8) to be set to the
                              very next occurrence of the like object. Achieved by bringing in the previous
@@ -851,7 +859,7 @@ DELIMITER ;
 /********************************************************************************************/
 
 /*
-   sp_Iterate_XML_v51c.sql
+   sp_Iterate_XML_v54a.sql
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
 
@@ -869,6 +877,14 @@ DELIMITER ;
         and the Greater Conservation Community.
 
    Revision History:
+   Version 54a- 2012-03-19 - Fix error created by recomposition of v_KEAIndicator.
+   Version 54 - 2012-03-04 - Consolidate ANALYZE TABLE statements.
+   Version 53 - 2012-02-11 - Change the order of REPLACE parameters for the ANALYZE TABLE statements
+                             so that ThreatReductionResult gets REPLACEd with RESULT before 
+                             Threat gets REPLACEd with Cause.
+   Version 52 - 2011-12-23 - Add FiscalYear to DateUnitWorkUnits, DateUnitExpense.
+                           - Compute StartYear and StartMonth for Daily and Full Project 
+                             assignments/expenses.
    Version 51 - 2011-09-28 - Fixed bug introduced in Version 50? where any column value that 
                              contains "(" would become corrupted. (Oops!) The column value list is now
                              anchored with the anchor character (^) while it is being populated. The
@@ -1108,9 +1124,9 @@ BEGIN
                 FROM ChildRefs
                WHERE ParentFlags & 2 = FALSE;
 
-      /* Cursor to select table names for ANALYZE TABLE statistics. */
+      /* Cursors to select table names for ANALYZE TABLE statistics. */
 
-      DECLARE c_analyze CURSOR FOR
+      DECLARE c_analyze1 CURSOR FOR
               SELECT DISTINCT
                      CASE WHEN ElementName = "TaskSubTask" THEN "SubTask"
                           ELSE REPLACE(
@@ -1118,16 +1134,42 @@ BEGIN
                                      REPLACE(
                                         REPLACE(
                                            REPLACE(
-                                              REPLACE(ElementName,"Threat","Cause"),
-                                                      "BiodiversityTarget","Target"
+                                              REPLACE(
+                                                 REPLACE(ElementName,"IntermediateResult","Result"),
+                                                         "ThreatReductionResult","Result" 
+                                                     ),"BiodiversityTarget","Target"
                                                   ),"HumanWelfareTarget","Target"
-                                               ),"IntermediateResult","Result"
-                                            ),"ThreatReductionResult","Result" 
+                                               ),"Threat","Cause"
+                                            ),"CauseRating","ThreatRating"
                                          ),"Task","TaskActivityMethod"
                                       ) 
                       END
                 FROM XMLData
                WHERE ElementFlags & 4 = 4;
+
+      DECLARE c_analyze2 CURSOR FOR
+              SELECT DISTINCT
+                     CASE WHEN TableName IN ("TaskSubTask","ActivityTask","MethodTask")
+                               THEN "SubTask"
+                          WHEN TableName RLIKE "^Task*|^Activity*|^Method*"
+                               THEN REPLACE(REPLACE(REPLACE(TableName,"Method","Task"),
+                                                            "Activity","Task"
+                                                   ),"Task","TaskActivityMethod"
+                                           )
+                          ELSE REPLACE(
+                                  REPLACE(
+                                     REPLACE(
+                                        REPLACE(
+                                           REPLACE(
+                                              REPLACE(TableName,"IntermediateResult","Result"),
+                                                      "ThreatReductionResult","Result" 
+                                                  ),"BiodiversityTarget","Target"
+                                               ),"HumanWelfareTarget","Target"
+                                            ),"Threat","Cause"
+                                         ),"CauseRating","ThreatRating"
+                                      ) 
+                      END
+                FROM ChildRefs;
 
       DECLARE CONTINUE HANDLER FOR NOT FOUND SET EOF = TRUE;
       
@@ -1452,22 +1494,22 @@ Recur:
       
             IF pObjectFlags & 4 = 4 THEN         -- Object represents a Database Table
             
-                /* Insert a row into the table represented by the XML Object. */
+               /* Insert a row into the table represented by the XML Object. */
             
-                IF pObjectFlags & (16|32) IN (16,32) THEN     /* Object is the child of a  M:N or 1:N 
-                                                                 association.
-                                                              */
-                   IF  @Pool = TRUE 
-                   AND pObjectFlags & 256 = FALSE THEN        /* Children of tables in a pool must
-                                                                 reference their Parent XID.
-                                                              */
-                       SET pColNames =
-                              REPLACE(pColNames,"(ID",CONCAT("(ID,",pParentName,"XID"));
+               IF pObjectFlags & (16|32) IN (16,32) THEN     /* Object is the child of a  M:N or 1:N 
+                                                                association.
+                                                             */
+                  IF  @Pool = TRUE 
+                  AND pObjectFlags & 256 = FALSE THEN        /* Children of tables in a pool must
+                                                                reference their Parent XID.
+                                                             */
+                      SET pColNames =
+                             REPLACE(pColNames,"(ID",CONCAT("(ID,",pParentName,"XID"));
                               
-                       /* ColValues is anchored with "^" to avoid possible corruption during manipulation. */
+                      /* ColValues is anchored with "^" to avoid possible corruption during manipulation. */
 
-                       SET pColValues = REPLACE(pColValues,"(^0",CONCAT("(^0,",pParentXID));
-                   END IF;
+                      SET pColValues = REPLACE(pColValues,"(^0",CONCAT("(^0,",pParentXID));
+                  END IF;
                END IF;
       
                /* ProjectSummaryID is inserted into every project-specific table in the database. 
@@ -1614,7 +1656,8 @@ Recur:
                /******************************************************************************
                
                 The next two statements select the primary key of the row just inserted
-                using the function LAST_INSERT_ID(). No other INSERT can come before them.
+                using the function LAST_INSERT_ID(). No other INSERT can come before or 
+                between them.
 
                /* If this iteration has just written the ProjectSummary record, set the
                   global variable @ProjectSummaryID to be inserted into all subsequent
@@ -1713,29 +1756,25 @@ Recur:
       END IF;
 
       SET EOF = FALSE;
-      OPEN c_analyze;
+      OPEN c_analyze1;
 
-Anlyz:
+      SET @SQLStmt = "ANALYZE TABLE ";
+      
       WHILE NOT EOF DO
-            FETCH c_analyze INTO pTableName;
+            FETCH c_analyze1 INTO pTableName;
 
             IF NOT EOF THEN
-               SET @SQLStmt = CONCAT("ANALYZE LOCAL TABLE ",pTableName);
-
-               /* Trace/Debug Statement */
-
-               IF @Trace = TRUE THEN
-                  INSERT INTO TRACE VALUES (0,@SQLStmt, CURRENT_TIME());
-               END IF;
-
-               PREPARE SQLStmt FROM @SQLStmt;
-               EXECUTE SQLStmt;
-               DEALLOCATE PREPARE SQLStmt;
+               SET @SQLStmt = CONCAT(@SQLStmt,pTableName,",");
             END IF;
 
-      END WHILE Anlyz;
-      CLOSE c_analyze;
+      END WHILE;
+      CLOSE c_analyze1;
 
+      SET @SQLStmt = TRIM(TRAILING "," FROM @SQLStmt);
+      PREPARE SQLStmt FROM @SQLStmt;
+      EXECUTE SQLStmt;
+      DEALLOCATE PREPARE SQLStmt;
+      
       /* Trace/Debug Statement */
 
       IF @Trace = TRUE THEN
@@ -2059,11 +2098,6 @@ Child2:
                EXECUTE SQLStmt;
                DEALLOCATE PREPARE SQLStmt;
 
-               SET @SQLStmt = CONCAT("ANALYZE TABLE ",pTableName);
-               PREPARE SQLStmt FROM @SQLStmt;
-               EXECUTE SQLStmt;
-               DEALLOCATE PREPARE SQLStmt;
-
                /* If the ConPro Project ID was imported from the XML data stream
                   then we don't have to create one.
                */
@@ -2084,9 +2118,42 @@ Child2:
          INSERT INTO ExternalProjectId
                 SELECT 0, @ProjectSummaryID, "ConPro", ProjectID FROM ProjectID;
          UPDATE ProjectID SET ProjectID = ProjectID + 1;
-         ANALYZE TABLE ExternalProjectId;
       END IF;
 
+
+      /* ANALYZE TABLEs. */
+
+      /* Trace/Debug Statement */
+
+      IF @Trace = TRUE THEN
+         INSERT INTO TRACE VALUES (0,"Analyze Tables", CURRENT_TIME());
+      END IF;
+
+      SET EOF = FALSE;
+      OPEN c_analyze2;
+
+      SET @SQLStmt = "ANALYZE TABLE ";
+      
+      WHILE NOT EOF DO
+            FETCH c_analyze2 INTO pTableName;
+
+            IF NOT EOF THEN
+               SET @SQLStmt = CONCAT(@SQLStmt,pTableName,",");
+            END IF;
+
+      END WHILE;
+      CLOSE c_analyze2;
+
+      SET @SQLStmt = CONCAT(@SQLStmt,"ExternalProjectId");
+      PREPARE SQLStmt FROM @SQLStmt;
+      EXECUTE SQLStmt;
+      DEALLOCATE PREPARE SQLStmt;
+      
+      /* Trace/Debug Statement */
+
+      IF @Trace = TRUE THEN
+         INSERT INTO TRACE VALUES (0,"End Analyze Tables", CURRENT_TIME());
+      END IF;
 
       /* Transform Target.ViabilityMode from "","TNC" to "Simple","KEA", respectively. */
 
@@ -2111,9 +2178,10 @@ Child2:
                        ON (    Tgt1.ID = TgtInd.TargetID
                            AND TgtInd.IndicatorID = Ind.ID
                           )
-                LEFT JOIN (v_KEAIndicator KEAInd, v_TargetKEA TgtKEA, Target Tgt2)
+                LEFT JOIN (KeyEcologicalAttributeIndicator KEAInd, 
+                           TargetKeyEcologicalAttribute TgtKEA, Target Tgt2)
                        ON (    Tgt2.ID = TgtKEA.TargetID
-                           AND TgtKEA.KEAID = KEAInd.KEAID
+                           AND TgtKEA.KeyEcologicalAttributeID = KEAInd.KeyEcologicalAttributeID
                            AND KEAInd.IndicatorID = Ind.ID
                           )
                 LEFT JOIN (StrategyIndicator StrInd, Strategy Str)
@@ -2166,23 +2234,38 @@ Child2:
 
       /* Create the components of Work Plan and Expense durations from their text elements. */
 
-      UPDATE DateUnitWorkUnits
+      UPDATE DateUnitWorkUnits, ProjectPlanning Plan
          SET StartYear =
              CASE WHEN WorkUnitsDateUnit IN ("Month","Quarter","Year")
-                  THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,
-                                                      '"',2
-                                                      ),'"',-1
-                                      )
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"\"",2),"\"",-1)
+                  WHEN WorkUnitsDateUnit = "Day"
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"-",1),"\"",-1)
+                  WHEN WorkUnitsDateUnit LIKE "Full%"
+                       THEN YEAR(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
+                                           THEN Plan.WorkPlanStartDate
+                                      WHEN Plan.StartDate IS NOT NULL
+                                      THEN Plan.StartDate
+                                      ELSE CURRENT_DATE()
+                                  END
+                                )
               END,
              StartMonth =
              CASE WHEN WorkUnitsDateUnit IN ("Month","Quarter","Year")
-                  THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,
-                                                       '"',4
-                                                      ),'"',-1
-                                      )
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"\"",4),"\"",-1)
+                  WHEN WorkUnitsDateUnit = "Day"
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"-",2),"-",-1)
+                  WHEN WorkUnitsDateUnit LIKE "Full%"
+                       THEN MONTH(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
+                                            THEN Plan.WorkPlanStartDate
+                                       WHEN Plan.StartDate IS NOT NULL
+                                       THEN Plan.StartDate
+                                       ELSE CURRENT_DATE()
+                                   END
+                                 )
               END
-       WHERE ProjectSummaryID = @ProjectSummaryID;
-
+       WHERE Plan.ProjectSummaryID = DateUnitWorkUnits.ProjectSummaryID
+         AND DateUnitWorkUnits.ProjectSummaryID = @ProjectSummaryID;
+         
       UPDATE DateUnitWorkUnits, ProjectPlanning Plan
          SET DateUnitWorkUnits.StartDate =
              CASE WHEN WorkUnitsDateUnit = "Day" THEN
@@ -2246,24 +2329,48 @@ Child2:
        WHERE Plan.ProjectSummaryID = DateUnitWorkUnits.ProjectSummaryID
          AND DateUnitWorkUnits.ProjectSummaryID = @ProjectSummaryID;
 
+      UPDATE DateUnitWorkUnits Units, ProjectPlanning Plan
+         SET FiscalYear = YEAR(CASE WHEN FiscalYearStart IS NULL
+                                    THEN EndDate
+                                    ELSE ADDDATE(EndDate,INTERVAL 12-FiscalYearStart+1 MONTH)
+                                END
+                              )
+       WHERE Plan.ProjectSummaryID = Units.ProjectSummaryID
+         AND Units.ProjectSummaryID = @ProjectSummaryID;
+         
 
-      UPDATE DateUnitExpense
+      UPDATE DateUnitExpense, ProjectPlanning Plan
          SET StartYear =
              CASE WHEN ExpensesDateUnit IN ("Month","Quarter","Year")
-                  THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,
-                                                       '"',2
-                                                      ),'"',-1
-                                      )
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"\"",2),"\"",-1)
+                  WHEN ExpensesDateUnit = "Day"
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"-",1),"\"",-1)
+                  WHEN ExpensesDateUnit LIKE "Full%"
+                       THEN YEAR(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
+                                           THEN Plan.WorkPlanStartDate
+                                      WHEN Plan.StartDate IS NOT NULL
+                                      THEN Plan.StartDate
+                                      ELSE CURRENT_DATE()
+                                  END
+                                )
               END,
              StartMonth =
              CASE WHEN ExpensesDateUnit IN ("Month","Quarter","Year")
-                  THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,
-                                                       '"',4
-                                                      ),'"',-1
-                                      )
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"\"",4),"\"",-1)
+                  WHEN ExpensesDateUnit = "Day"
+                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"-",2),"-",-1)
+                  WHEN ExpensesDateUnit LIKE "Full%"
+                       THEN MONTH(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
+                                            THEN Plan.WorkPlanStartDate
+                                       WHEN Plan.StartDate IS NOT NULL
+                                       THEN Plan.StartDate
+                                       ELSE CURRENT_DATE()
+                                   END
+                                 )
               END
-       WHERE ProjectSummaryID = @ProjectSummaryID;
-
+       WHERE Plan.ProjectSummaryID = DateUnitExpense.ProjectSummaryID
+         AND DateUnitExpense.ProjectSummaryID = @ProjectSummaryID;
+         
       UPDATE DateUnitExpense, ProjectPlanning Plan
          SET DateUnitExpense.StartDate =
              CASE WHEN ExpensesDateUnit = "Day" THEN
@@ -2326,6 +2433,15 @@ Child2:
               END
        WHERE Plan.ProjectSummaryID = DateUnitExpense.ProjectSummaryID
          AND DateUnitExpense.ProjectSummaryID = @ProjectSummaryID;
+         
+      UPDATE DateUnitExpense Exp, ProjectPlanning Plan
+         SET FiscalYear = YEAR(CASE WHEN FiscalYearStart IS NULL
+                                    THEN EndDate
+                                    ELSE ADDDATE(EndDate,INTERVAL 12-FiscalYearStart+1 MONTH)
+                                END
+                              )
+       WHERE Plan.ProjectSummaryID = Exp.ProjectSummaryID
+         AND Exp.ProjectSummaryID = @ProjectSummaryID;
 
 
       /* Populate Stress.StressRating (not yet populated by Miradi) */
@@ -2351,7 +2467,7 @@ DELIMITER ;
 /********************************************************************************************/
 
 /*
-   sp_StrategyThreat_v12a.sql
+   sp_StrategyThreat_v13.sql
 
    Walks the Conceptual Model and Results Chain diagram links from Strategies, Objectives,
    and Threats to their Threats / Threat Reduction Results and Targets, to create database
@@ -2373,6 +2489,7 @@ DELIMITER ;
         and the Greater Conservation Community.
 
    Revision History:
+   Version 13 - 2012-03-05 - Consolidate ANALYZE TABLE statements.
    Version 12 - 2011-07-23 - Revise indexes for performance.
    Version 11 - 2011-07-21 - Insert code to terminate traversal of a link chain if it
                              encounters a circular link.
@@ -2405,6 +2522,8 @@ CREATE PROCEDURE sp_StrategyThreat (pProjectSummaryID INTEGER)
 
 StrThr:
 BEGIN
+
+      DECLARE pFirstTime BOOLEAN DEFAULT TRUE;
 
       IF  @Trace = TRUE THEN
           INSERT INTO Trace VALUES (0,"Begin sp_StrategyThreat()",CURRENT_TIME());
@@ -2472,7 +2591,6 @@ BEGIN
       IF ROW_COUNT() = 0 THEN LEAVE StrThr; END IF;
 
       CREATE INDEX Ix1 ON t0 (ProjectSummaryID, RelatedFactorXID, RelatedFactor);
-      ANALYZE TABLE t0;
 
       DROP TABLE IF EXISTS t1;
       CREATE TEMPORARY TABLE t1
@@ -2529,7 +2647,6 @@ BEGIN
 
 STLoop:
       WHILE TRUE DO
-            ANALYZE TABLE t1;
 
             REPLACE INTO StrategyThreat (ID, ProjectSummaryID, StrategyID, ThreatID,
                                          StrategyXID, ThreatXID
@@ -2617,7 +2734,6 @@ STLoop:
                        AND t1.ToFactor LIKE "%Target";
                        
             INSERT INTO t3 SELECT * FROM t1;   -- For trapping circular links.
-            ANALYZE TABLE t3;
             
             /* Trace/Debug statement */
 
@@ -2654,7 +2770,8 @@ STLoop:
                                      ); 
                                      
             IF ROW_COUNT() = 0 THEN LEAVE STLoop; END IF;
-            ANALYZE TABLE t2;
+            
+            IF pFirstTime THEN ANALYZE TABLE t1, t2, t3; SET pFirstTime = FALSE; END IF;
 
             REPLACE INTO StrategyThreat (ID, ProjectSummaryID, StrategyID, ThreatID,
                                          StrategyXID, ThreatXID
@@ -2742,7 +2859,6 @@ STLoop:
                        AND t2.ToFactor LIKE "%Target";
 
             INSERT INTO t3 SELECT * FROM t2;   -- For trapping circular links.
-            ANALYZE TABLE t3;
 
             /* Trace/Debug statement */
 
@@ -2782,11 +2898,7 @@ STLoop:
 
       END WHILE STLoop;
 
-      ANALYZE TABLE StrategyThreat;
-      ANALYZE TABLE StrategyTarget;
-      ANALYZE TABLE ObjectiveThreat;
-      ANALYZE TABLE ObjectiveTarget;
-      ANALYZE TABLE ThreatTarget;
+      ANALYZE TABLE StrategyThreat, StrategyTarget, ObjectiveThreat, ObjectiveTarget, ThreatTarget;
 
       DROP TABLE t0;
       DROP TABLE t1;

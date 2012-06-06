@@ -1,5 +1,5 @@
 /*
-   sp_Iterate_XML_v53.sql
+   sp_Iterate_XML_v54a.sql
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
 
@@ -17,6 +17,8 @@
         and the Greater Conservation Community.
 
    Revision History:
+   Version 54a- 2012-03-19 - Fix error created by recomposition of v_KEAIndicator.
+   Version 54 - 2012-03-04 - Consolidate ANALYZE TABLE statements.
    Version 53 - 2012-02-11 - Change the order of REPLACE parameters for the ANALYZE TABLE statements
                              so that ThreatReductionResult gets REPLACEd with RESULT before 
                              Threat gets REPLACEd with Cause.
@@ -262,9 +264,9 @@ BEGIN
                 FROM ChildRefs
                WHERE ParentFlags & 2 = FALSE;
 
-      /* Cursor to select table names for ANALYZE TABLE statistics. */
+      /* Cursors to select table names for ANALYZE TABLE statistics. */
 
-      DECLARE c_analyze CURSOR FOR
+      DECLARE c_analyze1 CURSOR FOR
               SELECT DISTINCT
                      CASE WHEN ElementName = "TaskSubTask" THEN "SubTask"
                           ELSE REPLACE(
@@ -272,18 +274,42 @@ BEGIN
                                      REPLACE(
                                         REPLACE(
                                            REPLACE(
-                                               REPLACE(
-                                                  REPLACE(ElementName,"IntermediateResult","Result"),
-                                                          "ThreatReductionResult","Result" 
-                                                      ),"BiodiversityTarget","Target"
-                                                   ),"HumanWelfareTarget","Target"
-                                                ),"Threat","Cause"
-                                             ),"CauseRating","ThreatRating"
+                                              REPLACE(
+                                                 REPLACE(ElementName,"IntermediateResult","Result"),
+                                                         "ThreatReductionResult","Result" 
+                                                     ),"BiodiversityTarget","Target"
+                                                  ),"HumanWelfareTarget","Target"
+                                               ),"Threat","Cause"
+                                            ),"CauseRating","ThreatRating"
                                          ),"Task","TaskActivityMethod"
                                       ) 
                       END
                 FROM XMLData
                WHERE ElementFlags & 4 = 4;
+
+      DECLARE c_analyze2 CURSOR FOR
+              SELECT DISTINCT
+                     CASE WHEN TableName IN ("TaskSubTask","ActivityTask","MethodTask")
+                               THEN "SubTask"
+                          WHEN TableName RLIKE "^Task*|^Activity*|^Method*"
+                               THEN REPLACE(REPLACE(REPLACE(TableName,"Method","Task"),
+                                                            "Activity","Task"
+                                                   ),"Task","TaskActivityMethod"
+                                           )
+                          ELSE REPLACE(
+                                  REPLACE(
+                                     REPLACE(
+                                        REPLACE(
+                                           REPLACE(
+                                              REPLACE(TableName,"IntermediateResult","Result"),
+                                                      "ThreatReductionResult","Result" 
+                                                  ),"BiodiversityTarget","Target"
+                                               ),"HumanWelfareTarget","Target"
+                                            ),"Threat","Cause"
+                                         ),"CauseRating","ThreatRating"
+                                      ) 
+                      END
+                FROM ChildRefs;
 
       DECLARE CONTINUE HANDLER FOR NOT FOUND SET EOF = TRUE;
       
@@ -608,22 +634,22 @@ Recur:
       
             IF pObjectFlags & 4 = 4 THEN         -- Object represents a Database Table
             
-                /* Insert a row into the table represented by the XML Object. */
+               /* Insert a row into the table represented by the XML Object. */
             
-                IF pObjectFlags & (16|32) IN (16,32) THEN     /* Object is the child of a  M:N or 1:N 
-                                                                 association.
-                                                              */
-                   IF  @Pool = TRUE 
-                   AND pObjectFlags & 256 = FALSE THEN        /* Children of tables in a pool must
-                                                                 reference their Parent XID.
-                                                              */
-                       SET pColNames =
-                              REPLACE(pColNames,"(ID",CONCAT("(ID,",pParentName,"XID"));
+               IF pObjectFlags & (16|32) IN (16,32) THEN     /* Object is the child of a  M:N or 1:N 
+                                                                association.
+                                                             */
+                  IF  @Pool = TRUE 
+                  AND pObjectFlags & 256 = FALSE THEN        /* Children of tables in a pool must
+                                                                reference their Parent XID.
+                                                             */
+                      SET pColNames =
+                             REPLACE(pColNames,"(ID",CONCAT("(ID,",pParentName,"XID"));
                               
-                       /* ColValues is anchored with "^" to avoid possible corruption during manipulation. */
+                      /* ColValues is anchored with "^" to avoid possible corruption during manipulation. */
 
-                       SET pColValues = REPLACE(pColValues,"(^0",CONCAT("(^0,",pParentXID));
-                   END IF;
+                      SET pColValues = REPLACE(pColValues,"(^0",CONCAT("(^0,",pParentXID));
+                  END IF;
                END IF;
       
                /* ProjectSummaryID is inserted into every project-specific table in the database. 
@@ -770,7 +796,8 @@ Recur:
                /******************************************************************************
                
                 The next two statements select the primary key of the row just inserted
-                using the function LAST_INSERT_ID(). No other INSERT can come before them.
+                using the function LAST_INSERT_ID(). No other INSERT can come before or 
+                between them.
 
                /* If this iteration has just written the ProjectSummary record, set the
                   global variable @ProjectSummaryID to be inserted into all subsequent
@@ -869,29 +896,25 @@ Recur:
       END IF;
 
       SET EOF = FALSE;
-      OPEN c_analyze;
+      OPEN c_analyze1;
 
-Anlyz:
+      SET @SQLStmt = "ANALYZE TABLE ";
+      
       WHILE NOT EOF DO
-            FETCH c_analyze INTO pTableName;
+            FETCH c_analyze1 INTO pTableName;
 
             IF NOT EOF THEN
-               SET @SQLStmt = CONCAT("ANALYZE LOCAL TABLE ",pTableName);
-
-               /* Trace/Debug Statement */
-
-               IF @Trace = TRUE THEN
-                  INSERT INTO TRACE VALUES (0,@SQLStmt, CURRENT_TIME());
-               END IF;
-
-               PREPARE SQLStmt FROM @SQLStmt;
-               EXECUTE SQLStmt;
-               DEALLOCATE PREPARE SQLStmt;
+               SET @SQLStmt = CONCAT(@SQLStmt,pTableName,",");
             END IF;
 
-      END WHILE Anlyz;
-      CLOSE c_analyze;
+      END WHILE;
+      CLOSE c_analyze1;
 
+      SET @SQLStmt = TRIM(TRAILING "," FROM @SQLStmt);
+      PREPARE SQLStmt FROM @SQLStmt;
+      EXECUTE SQLStmt;
+      DEALLOCATE PREPARE SQLStmt;
+      
       /* Trace/Debug Statement */
 
       IF @Trace = TRUE THEN
@@ -1215,11 +1238,6 @@ Child2:
                EXECUTE SQLStmt;
                DEALLOCATE PREPARE SQLStmt;
 
-               SET @SQLStmt = CONCAT("ANALYZE TABLE ",pTableName);
-               PREPARE SQLStmt FROM @SQLStmt;
-               EXECUTE SQLStmt;
-               DEALLOCATE PREPARE SQLStmt;
-
                /* If the ConPro Project ID was imported from the XML data stream
                   then we don't have to create one.
                */
@@ -1240,9 +1258,42 @@ Child2:
          INSERT INTO ExternalProjectId
                 SELECT 0, @ProjectSummaryID, "ConPro", ProjectID FROM ProjectID;
          UPDATE ProjectID SET ProjectID = ProjectID + 1;
-         ANALYZE TABLE ExternalProjectId;
       END IF;
 
+
+      /* ANALYZE TABLEs. */
+
+      /* Trace/Debug Statement */
+
+      IF @Trace = TRUE THEN
+         INSERT INTO TRACE VALUES (0,"Analyze Tables", CURRENT_TIME());
+      END IF;
+
+      SET EOF = FALSE;
+      OPEN c_analyze2;
+
+      SET @SQLStmt = "ANALYZE TABLE ";
+      
+      WHILE NOT EOF DO
+            FETCH c_analyze2 INTO pTableName;
+
+            IF NOT EOF THEN
+               SET @SQLStmt = CONCAT(@SQLStmt,pTableName,",");
+            END IF;
+
+      END WHILE;
+      CLOSE c_analyze2;
+
+      SET @SQLStmt = CONCAT(@SQLStmt,"ExternalProjectId");
+      PREPARE SQLStmt FROM @SQLStmt;
+      EXECUTE SQLStmt;
+      DEALLOCATE PREPARE SQLStmt;
+      
+      /* Trace/Debug Statement */
+
+      IF @Trace = TRUE THEN
+         INSERT INTO TRACE VALUES (0,"End Analyze Tables", CURRENT_TIME());
+      END IF;
 
       /* Transform Target.ViabilityMode from "","TNC" to "Simple","KEA", respectively. */
 
@@ -1267,9 +1318,10 @@ Child2:
                        ON (    Tgt1.ID = TgtInd.TargetID
                            AND TgtInd.IndicatorID = Ind.ID
                           )
-                LEFT JOIN (v_KEAIndicator KEAInd, v_TargetKEA TgtKEA, Target Tgt2)
+                LEFT JOIN (KeyEcologicalAttributeIndicator KEAInd, 
+                           TargetKeyEcologicalAttribute TgtKEA, Target Tgt2)
                        ON (    Tgt2.ID = TgtKEA.TargetID
-                           AND TgtKEA.KEAID = KEAInd.KEAID
+                           AND TgtKEA.KeyEcologicalAttributeID = KEAInd.KeyEcologicalAttributeID
                            AND KEAInd.IndicatorID = Ind.ID
                           )
                 LEFT JOIN (StrategyIndicator StrInd, Strategy Str)

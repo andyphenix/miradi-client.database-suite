@@ -1,5 +1,5 @@
 /*
-   sp_StrategyThreat_v12a.sql
+   sp_StrategyThreat_v13.sql
 
    Walks the Conceptual Model and Results Chain diagram links from Strategies, Objectives,
    and Threats to their Threats / Threat Reduction Results and Targets, to create database
@@ -21,6 +21,7 @@
         and the Greater Conservation Community.
 
    Revision History:
+   Version 13 - 2012-03-05 - Consolidate ANALYZE TABLE statements.
    Version 12 - 2011-07-23 - Revise indexes for performance.
    Version 11 - 2011-07-21 - Insert code to terminate traversal of a link chain if it
                              encounters a circular link.
@@ -53,6 +54,8 @@ CREATE PROCEDURE sp_StrategyThreat (pProjectSummaryID INTEGER)
 
 StrThr:
 BEGIN
+
+      DECLARE pFirstTime BOOLEAN DEFAULT TRUE;
 
       IF  @Trace = TRUE THEN
           INSERT INTO Trace VALUES (0,"Begin sp_StrategyThreat()",CURRENT_TIME());
@@ -120,7 +123,6 @@ BEGIN
       IF ROW_COUNT() = 0 THEN LEAVE StrThr; END IF;
 
       CREATE INDEX Ix1 ON t0 (ProjectSummaryID, RelatedFactorXID, RelatedFactor);
-      ANALYZE TABLE t0;
 
       DROP TABLE IF EXISTS t1;
       CREATE TEMPORARY TABLE t1
@@ -177,7 +179,6 @@ BEGIN
 
 STLoop:
       WHILE TRUE DO
-            ANALYZE TABLE t1;
 
             REPLACE INTO StrategyThreat (ID, ProjectSummaryID, StrategyID, ThreatID,
                                          StrategyXID, ThreatXID
@@ -265,7 +266,6 @@ STLoop:
                        AND t1.ToFactor LIKE "%Target";
                        
             INSERT INTO t3 SELECT * FROM t1;   -- For trapping circular links.
-            ANALYZE TABLE t3;
             
             /* Trace/Debug statement */
 
@@ -302,7 +302,8 @@ STLoop:
                                      ); 
                                      
             IF ROW_COUNT() = 0 THEN LEAVE STLoop; END IF;
-            ANALYZE TABLE t2;
+            
+            IF pFirstTime THEN ANALYZE TABLE t1, t2, t3; SET pFirstTime = FALSE; END IF;
 
             REPLACE INTO StrategyThreat (ID, ProjectSummaryID, StrategyID, ThreatID,
                                          StrategyXID, ThreatXID
@@ -390,7 +391,6 @@ STLoop:
                        AND t2.ToFactor LIKE "%Target";
 
             INSERT INTO t3 SELECT * FROM t2;   -- For trapping circular links.
-            ANALYZE TABLE t3;
 
             /* Trace/Debug statement */
 
@@ -430,11 +430,7 @@ STLoop:
 
       END WHILE STLoop;
 
-      ANALYZE TABLE StrategyThreat;
-      ANALYZE TABLE StrategyTarget;
-      ANALYZE TABLE ObjectiveThreat;
-      ANALYZE TABLE ObjectiveTarget;
-      ANALYZE TABLE ThreatTarget;
+      ANALYZE TABLE StrategyThreat, StrategyTarget, ObjectiveThreat, ObjectiveTarget, ThreatTarget;
 
       DROP TABLE t0;
       DROP TABLE t1;
