@@ -1,13 +1,36 @@
 /*
-   Import XML_v18.sql
+   Import XML_v18c.sql
 
    Import a Miradi project from an XMPZ XML data stream into the Miradi Database.
 
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
 
-   Developed by David Berg for The Nature Conservancy.
+   **********************************************************************************************
+   
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
+
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
 
    Revision History:
+   Version 18c- 2012-04-11 - Update definitions of Element Flags per sp_Parse_XML() Version 52.
+   Version 18b- 2012-03-05 - Insert a row into Trace to signify that 0 rows were LOADed.
+   Version 18a- 2012-03-05 - No need to ANALYZE TABLE ProjectXML.
    Version 18 - 2011-09-06 - Insert a Begin XML Load record into Trace.
    Version 17 - 2011-08-24 - Add new Element Flags 2048, 4096, and 8192.
                            - Don't retrieve first row from XMLData to seed the call to
@@ -44,10 +67,6 @@
    Version 01 - 2010-12-27 - Initial Version plus several enhnacements.
 */
 
-/* Note that using InnoDB when populating XMLData and XMLObjects and Stack resulted in unexplained
-   (by me) severe performance issues. Thus, the tables are created as MyISAM tables.
-*/
-
 USE Miradi;
 
 START TRANSACTION;
@@ -71,7 +90,8 @@ ENGINE=MyISAM DEFAULT CHARSET=utf8;
    can view it.
 */
 
-SET @Trace = TRUE;                      -- When TRUE, called scrips populate the Trace/Debug table.
+# SET @Trace = TRUE;                      -- When TRUE, called scrips populate the Trace/Debug table.
+SET @Trace = FALSE;                      -- When TRUE, called scrips populate the Trace/Debug table.
 
 DROP TABLE IF EXISTS ProjectXML;
 CREATE TEMPORARY TABLE ProjectXML                  -- Contains raw XML file contents.
@@ -125,43 +145,47 @@ LOAD DATA LOCAL INFILE 'c:\\_data\\Miradi\\Eastern Bay\\project.xml'  # Microsof
                                                             of line delimiters in LINES TERMINATED BY.
                                                          */
 
-ANALYZE TABLE ProjectXML;
+SELECT COUNT(*) INTO @RowsImported FROM ProjectXML;
 
-DROP TABLE IF EXISTS XMLData;
+INSERT INTO Trace VALUES (0,CONCAT(@RowsImported," rows inserted.",
+                                   CASE WHEN @RowsImported = 0
+                                        THEN " Load failed. (Bad filename?)" ELSE ""
+                                    END
+                                  ),CURRENT_TIME()
+                         );
+
+DROP TABLE IF EXISTS XMLData; 
 CREATE TEMPORARY TABLE XMLData             -- Contains parsed XML Data in distinct records.
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ElementName VARCHAR(255),
  ElementValue MEDIUMTEXT,
- ElementFlags INTEGER DEFAULT 0            /* A seried of bitwise flags to direct special processing
-                                              in called procedures ...
+ ElementFlags INTEGER DEFAULT 0                 /* A series of bitwise flags to direct special
+                                                   processing in called procedures ...
 
-                                                  1 = Element is an Object header tag.
-                                                  2 = Element is the Object header of a Pool of
-                                                      multiple like Objects.
-                                                  4 = Element is an Object for which exists a Table.
-                                                  8 = Element is the second or later element in a
-                                                      List Container, e.g. IDs or Codes.
-                                                 16 = Element is the Object header of a list of
-                                                      Many-to-One-or-Many elements.
-                                                 32 = Element is the Object header of a list of
-                                                      One-to-Many elements.
-                                                 64 = Elements are compound elements.
-                                                      The element name is a Factor Name;
-                                                      the element value is the Factor's XID.
-                                                128 = Element is the Object header of a list of
-                                                      recursive references.
-                                                256 = Element is the Object header of a set of
-                                                      Diagram Bend Points or Indicator Thresholds.
-                                                512 = Element is the Object header for 
-                                                      ConservationProject.
-                                               1024 = Element is the Object header for 
-                                                      ProjectSummary.
-                                               2048 = ElementValue contains the current Object's 
-                                                      XID Value.
-                                               4096 = Factor requires that an XID be created for it.
-                                               8192 = ElementValue contains the current Factor's 
-                                                      Attribute Value.
-                                            */
+                                                    1 = Element is an Object header tag.
+                                                    2 = Element is the Object header of a Pool of
+                                                        multiple like Objects.
+                                                    4 = Element is an Object for which exists a Table.
+                                                    8 = Second and subsequent consecutive elements
+                                                        that form a multi-valued list OR second
+                                                        and subsequent element sets that form a
+                                                        multi-valued set., e.g. IDs or Codes.
+                                                   16 = Element is the Object header of a list of
+                                                        Many-to-One-or-Many elements.
+                                                   32 = Element is the Object header of a list of
+                                                        One-to-Many elements.
+                                                   64 = Object header for compound elements.
+                                                        The element name is a Factor Name;
+                                                        the element value is the Factor's XID.
+                                                  128 = Element is the Object header of a list of
+                                                        recursive references.
+                                                  256 = Element is a table that shares 
+                                                        multiple factors.
+                                                  512 = Element is the Object header for ConservationProject.
+                                                 1024 = Element is the Object header for ProjectSummary.
+                                                 2048 = Element consists of an Object Header and Attribute(s).
+                                                 4096 = Factor requires that an XID be created for it.
+                                                */
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 # TRUNCATE TABLE XMLData;

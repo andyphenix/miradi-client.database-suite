@@ -1,12 +1,34 @@
 /*
    sp_StrategyThreat_v13.sql
 
-   Walks the Conceptual Model and Results Chain diagram links from Strategies, Objectives,
+   Traverses the Conceptual Model and Results Chain diagram paths from Strategies, Objectives,
    and Threats to their Threats / Threat Reduction Results and Targets, to create database
    associations between Strategies and Objectives and the Threats / Targets they address.
 
    (Initially coded to populate Strategy x Threat associations, later amended to also
     populate Strategy x Target, Objective x Threat/Target and Threat x Target.)
+
+   **********************************************************************************************
+   
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
+
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
 
    CALL sp_StrategyThreat(ProjectSummaryID, Trace)
 
@@ -17,14 +39,11 @@
               to be written at the beginning and end of the process and at the end of 
               each oscillation.
 
-   Developed by David Berg for The Nature Conservancy 
-        and the Greater Conservation Community.
-
    Revision History:
    Version 13 - 2012-03-05 - Consolidate ANALYZE TABLE statements.
    Version 12 - 2011-07-23 - Revise indexes for performance.
-   Version 11 - 2011-07-21 - Insert code to terminate traversal of a link chain if it
-                             encounters a circular link.
+   Version 11 - 2011-07-21 - Insert code to terminate traversal of a link chain if its
+                             path recourses onto itself.
                            - Rename FactorType to Factor everywhere except Target and Result. 
    Version 10 - 2011-07-12 - Use new view v_DiagramLink to include To/From DiagramFactorID
                              and To/From WrappedByDiagramFactorXID.
@@ -169,7 +188,8 @@ BEGIN
       CREATE TEMPORARY TABLE t2 LIKE t1;    -- as we follow the links from node to node.
 
       DROP TABLE IF EXISTS t3;              -- We need to keep a list of previously-visited 
-      CREATE TEMPORARY TABLE t3 LIKE t1;    -- nodes to avoid looping when there's a circular link.
+      CREATE TEMPORARY TABLE t3 LIKE t1;    -- nodes to avoid looping when a path of links
+                                            -- recourses back on itslf, creating a circular path.
 
       /* Trace/Debug statement */
 
@@ -265,7 +285,7 @@ STLoop:
                        AND t1.Factor = "Threat"
                        AND t1.ToFactor LIKE "%Target";
                        
-            INSERT INTO t3 SELECT * FROM t1;   -- For trapping circular links.
+            INSERT INTO t3 SELECT * FROM t1;   -- For trapping circular paths.
             
             /* Trace/Debug statement */
 
@@ -287,7 +307,7 @@ STLoop:
 
                       AND NOT t1.ToFactor LIKE "%Target"  
                       
-                      /* ... or if we encountered a circular link. */
+                      /* ... or if we encountered a circular path. */
                       
                       AND NOT (    t1.ToFactor = t1.Factor
                                AND t1.ToFactorXID = t1.FactorXID
@@ -390,7 +410,7 @@ STLoop:
                        AND t2.Factor = "Threat"
                        AND t2.ToFactor LIKE "%Target";
 
-            INSERT INTO t3 SELECT * FROM t2;   -- For trapping circular links.
+            INSERT INTO t3 SELECT * FROM t2;   -- For trapping circular paths.
 
             /* Trace/Debug statement */
 
@@ -412,7 +432,7 @@ STLoop:
 
                       AND NOT t2.ToFactor LIKE "%Target"  
                       
-                      /* ... or if we encountered a circular link. */
+                      /* ... or if we encountered a circular path. */
                       
                       AND NOT (    t2.ToFactor = t2.Factor
                                AND t2.ToFactorXID = t2.FactorXID

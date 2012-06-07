@@ -1,11 +1,30 @@
 /*
-   Miradi 3.3 Database v44.sql
+   Miradi 3.3 Database v45.sql
 
    Miradi 3.3 Relational Database Schema
    Compatible with the MySQL Database Server, Version 5.0 and later.
 
-   Developed by David Berg for The Nature Conservancy 
-        and the Greater Conservation Community.
+   **********************************************************************************************
+   
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
+
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
 
    This version of the schema is compatible with Miradi 3.3 and later versions employing 
    XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
@@ -22,6 +41,7 @@
                       to undo all of them.)
 
    Revision History:
+   Version 45 - 2012-04-12 - Drop column WorkUnitDate from DateUnitWorkUnits and DateUnitExpense.
    Version 44 - 2012-03-07 - Added views v_StrategyActivity, v_ObjectiveIndicator,
                              v_Task/Activity/MethodAssignment, v_Task/Activity/MethodExpense,
                              v_TargetKeyAttribute, v_KeyAttributeIndicator, v_TargetIndicator.
@@ -736,12 +756,11 @@ CREATE TABLE DateUnitWorkUnits
  Factor VARCHAR(25) NOT NULL,
  FactorID INTEGER NOT NULL DEFAULT 0,
  FactorXID INTEGER NOT NULL,
- WorkUnitsDateUnit VARCHAR(50),     -- These two columns
- WorkUnitsDate VARCHAR(50),            -- comprise the full text of WorkUnitsDateUnit
- StartYear SMALLINT,                -- pattern = "[0-9]{4}"                   \
- StartMonth TINYINT,                -- minInclusive="1" maxInclusive="12"      | Extracted
- StartDate DATE,                    -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}"  -  during
- EndDate DATE,                      -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}" /  import
+ WorkUnitsDateUnit VARCHAR(50),
+ StartYear SMALLINT,                -- pattern = "[0-9]{4}"                   
+ StartMonth TINYINT,                -- minInclusive="1" maxInclusive="12"      
+ StartDate DATE,                    -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}"  
+ EndDate DATE,                      -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}"
  FiscalYear SMALLINT,
  NumberOfUnits DECIMAL(5,2),
  INDEX (ProjectSummaryID, FactorXID),
@@ -795,12 +814,11 @@ CREATE TABLE DateUnitExpense
  Factor VARCHAR(25) NOT NULL,
  FactorID INTEGER NOT NULL DEFAULT 0,
  FactorXID INTEGER NOT NULL,
- ExpensesDateUnit VARCHAR(50),       -- These two columns
- ExpensesDate VARCHAR(50),              -- comprise the full text of ExpensesDateUnit
- StartYear SMALLINT,                 -- pattern = "[0-9]{4}"                   \
- StartMonth TINYINT,                 -- minInclusive="1" maxInclusive="12"      | Extracted
- StartDate DATE,                     -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}"  -  during
- EndDate DATE,                       -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}" /   import
+ ExpensesDateUnit VARCHAR(50),
+ StartYear SMALLINT,                 -- pattern = "[0-9]{4}"
+ StartMonth TINYINT,                 -- minInclusive="1" maxInclusive="12"
+ StartDate DATE,                     -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}" 
+ EndDate DATE,                       -- pattern = "[0-9]{4}-[0-9]{2}-[0-9]{2}"
  FiscalYear SMALLINT,
  Expense DECIMAL(11,2),
  INDEX (ProjectSummaryID, FactorXID),
@@ -3347,7 +3365,8 @@ CREATE TABLE WWFRegionsList
 DROP TABLE IF EXISTS MiradiTables;
 CREATE TABLE MiradiTables
 (TableName VARCHAR(255),
- TableType CHAR(5)
+ TableType CHAR(5),
+ INDEX (TableName)
 )
 ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
@@ -3356,7 +3375,6 @@ INSERT INTO MiradiTables
          FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = (SELECT DATABASE());
 
-CREATE INDEX Tbl_IX1 ON MiradiTables(TableName);
 ANALYZE TABLE MiradiTables;
 
            

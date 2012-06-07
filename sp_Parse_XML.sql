@@ -1,19 +1,57 @@
 /*
-   sp_Parse_XML_v51.sql
+   sp_Parse_XML_v53d.sql
 
-   Parses raw XMLZ XML Data contained in the ProjectXML Table into distinct rows
-   of element names and values. 
+   Parses raw XMPZ XML Data contained in the ProjectXML Table into distinct rows
+   of element names and values.
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
    
-   Developed by David Berg for The Nature Conservancy 
-        and the Greater Conservation Community.
+   **********************************************************************************************
+   
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
+
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
+
+   Invocation: CALL sp_Parse_XML(). 
+   
+   The table ProjectXML must have been loaded from a compatible XMPZ XML data stream (see above)
+   exported from a Miradi project.
+   
+   This procedure consists of two parts. Part 1 serially reads the table ProjectXML,
+   which contains the XMPZ XML data stream LOADed from a Miradi project. It extracts 
+   XML Tags and their corresponding attributes/field values for insert into the table XMLData, 
+   from which the database will be populated in the procedure sp_Iterate_XML().
+   
+   Part 2, EOF Processing, customizes and standardizes object header and field names to be
+   compatible with database table and column names. It also assigns bitwise element flags to trigger
+   special processing in sp_Iterate_XML(). Those flag values and meanings are described in the 
+   comments below. 
 
    Note that most conditional tests in this procedure must occur in the order presented, as the
    first condition in a CASE statement that tests TRUE exits the CASE statement. Changes to
    that order must be tested thoroughly before implementing them.
 
    Revision History: 
+   Version 53d- 2012-05-08 - ExtractValue() extracts embedded quotes from element values, but for some
+                             reason (bug?) strips embedded quotes from attribute values. 
+   Version 53 - 2012-04-25 - Employ the MySQL Function ExtractValue() to extract XML element values.
+   Version 52 - 2012-04-04 - Formalize the extraction of XML Attributes for insert into XMLData.
    Version 51 - 2011-12-12 - Account for the possible condition of a null object among a set of like objects,
                              which inadvertently causes the multiple value flag (Flag 8) to be set to the
                              very next occurrence of the like object. Achieved by bringing in the previous
@@ -166,10 +204,10 @@ Parse:
 BEGIN
 
       DECLARE XML_Line_In MEDIUMTEXT;             -- Raw XML Imput
-      DECLARE XML_Line_Out MEDIUMTEXT;            -- Parsed XML Output
+      DECLARE XML_Line_Out MEDIUMTEXT;            -- Parsed XML Segment
+      DECLARE pObjectName VARCHAR(255);
       DECLARE pElementName VARCHAR(255);
-      DECLARE pElementValue MEDIUMTEXT;
-      DECLARE pElementFlags INTEGER DEFAULT 0;  /* A seried of bitwise flags to direct special
+      DECLARE pElementFlags INTEGER DEFAULT 0;  /* A series of bitwise flags to direct special
                                                    processing in called procedures ...
 
                                                     1 = Element is an Object header tag.
@@ -193,15 +231,12 @@ BEGIN
                                                         multiple factors.
                                                   512 = Element is the Object header for ConservationProject.
                                                  1024 = Element is the Object header for ProjectSummary.
-                                                 2048 = ElementValue contains the current Object's 
-                                                        XID Value.
+                                                 2048 = Element consists of an Object Header and Attribute(s).
                                                  4096 = Factor requires that an XID be created for it.
-                                                 8192 = ElementValue contains the current Factor's 
-                                                        Attribute Value.
                                                 */
       DECLARE PrevElementID INTEGER DEFAULT 0;
       DECLARE PrevElementName TEXT DEFAULT "";
-      DECLARE i SMALLINT DEFAULT 0;               -- Iterator for delimited segments.
+      DECLARE i, j SMALLINT DEFAULT 0;             -- Iterators for delimited segments/attributes.
       DECLARE EOF BOOLEAN DEFAULT FALSE;
 
       /* Cursor to parse the XML lines into distinct records.
@@ -215,6 +250,9 @@ BEGIN
                 FROM ProjectXML ORDER BY ID;
 
       DECLARE CONTINUE HANDLER FOR NOT FOUND SET EOF = TRUE;
+      DECLARE CONTINUE HANDLER FOR 1525 SET @ElementValue = "";
+      
+      /* Part 1. Extract data from ProjectXML into XMLData. */
 
       OPEN c_xml;
 
@@ -224,7 +262,6 @@ BEGIN
       WHILE NOT EOF DO
 
             FETCH c_xml INTO XML_Line_In;
-
             IF NOT EOF THEN
                SET i = 0;
 
@@ -240,9 +277,9 @@ BEGIN
 
                      SET pElementFlags = 0;
                      
-                     /* Segment each XML Line into distinct records as delimited by "><". */
+                     /* Segment each XML Line into distinct 'records' as delimited by "><". */
 
-                     SET i = i+1;
+                     SET i = i + 1;
                      SET XML_Line_Out =
                             CONCAT(CASE WHEN i > 1 THEN "<" ELSE "" END,
                                    TRIM(TRAILING "^" FROM
@@ -253,87 +290,42 @@ BEGIN
                                        ),">"
                                   );
 
-                     CASE WHEN XML_Line_Out LIKE "% Id=%" THEN
-
-                               /* Element is an Object Header within a Pool.
-
-                                  Internal Object IDs are specified using the notation:
-                                  'ObjectClassHeader Id="xx"'. The Id is separated
-                                  From the Object Class Header and becomes its 
-                                  ElementValue. It will become the XID value when
-                                  inserted into its respective Table in Iterate_XML.
-                               */
-
-                               SET XML_Line_Out = 
-                                      REPLACE(REPLACE(XML_Line_Out," Id=\"",">"
-                                                     ),"\">",""
-                                             );
-                               SET pElementFlags = pElementFlags + 2048;
-                               
-                          WHEN XML_Line_Out LIKE "<StatusEntry Key=%" THEN
-                          
-                               /* Dashboard Status Entries are like any object within
-                                  a pool, except they are subordinate to objects within
-                                  a pool and are not a pool in and of themselves. Their
-                                  instance attribute, rather than being an ID, is, instead
-                                  a textual "Key." The Key is separated from the ElementName
-                                  and becomes its ElmentValue.
-                               */
-                               
-                               SET XML_Line_Out =
-                                   REPLACE(REPLACE(XML_Line_Out," Key=\"",">"
-                                                  ),"\">",""
-                                          );
-                               SET pElementFlags = pElementFlags + 8192;
-                                
-                          /* Extra Data Sections and Extra Data Items each contain a non-key
-                             attribute value in their Object Header.
-                          */
-                          
-                          WHEN XML_Line_Out LIKE "<ExtraDataSection owner=%" THEN
-                               SET XML_Line_Out = 
-                                   REPLACE(REPLACE(XML_Line_Out," owner=\"",">"
-                                                  ),"\">",""
-                                          );
-                               SET pElementFlags = pElementFlags + 8192;
-                                                         
-                          WHEN XML_Line_Out LIKE "<ExtraDataItem ExtraDataItemName=%" THEN
-                               SET XML_Line_Out = 
-                                   REPLACE(REPLACE(XML_Line_Out," ExtraDataItemName=\"",">"
-                                                  ),"\">",""
-                                          );
-                               SET pElementFlags = pElementFlags + 8192;
-                                                         
-                          WHEN XML_Line_Out LIKE "<ConservationProject xmlns=%" THEN
-                          
-                               /* Conservation Project contains the XMLNS specification as
-                                  its attribute value.
-                               */
-                               
-                               SET XML_Line_Out = 
-                                   REPLACE(REPLACE(XML_Line_Out," xmlns=",">"
-                                                  ),"\">","\""
-                                          );
-                               SET pElementFlags = pElementFlags + 512 + 8192;
-                                                         
-                          ELSE SET i = i;
-                      END CASE;
-
-                     /* Separate each record into its Element Name and Value.
+                     /* Separate each 'record' into its Element Name and Value.
+                     
+                        Each 'record' consists of either an Object Header Tag,
+                        an Object Header Tag followed by one or more 'attributes',
+                        or an Element Tag Name followed by an Element Value.
+                        
                         First Element Name ...
                      */
 
-                     SET pElementName = TRIM(LEADING "<" FROM
-                                             SUBSTRING_INDEX(XML_Line_Out,">",1)
-                                            );
-
+                     CASE WHEN LOCATE("=",SUBSTRING_INDEX(XML_Line_Out,">",1)) > 0 
+                            
+                          THEN  /* Element is an Object Header followed by a list of attributes. */
+                                      
+                               SET pElementName = TRIM(LEADING "<" FROM 
+                                                       SUBSTRING_INDEX(XML_Line_Out," ",1)
+                                                      );
+                               SET pObjectName = pElementName;
+                               SET pElementFlags = pElementFlags + 2048;
+                               
+        
+                          ELSE /* Element is a simple Object Header or an Element Tag Name and Value pair. */
+                                 
+                               SET pElementName = TRIM(LEADING "<" FROM 
+                                                       SUBSTRING_INDEX(XML_Line_Out,">",1)
+                                                      );
+                     END CASE;
+                             
                      CASE WHEN TRIM(LEADING "/" FROM pElementName) 
                                   IN ("ExpensesDateUnit","WorkUnitsDateUnit",
 
                                /* Element is a Work Plan/Expense Assignment time specification.
-                                  Separate the time specification from the Element Header Tag,
-                                  rename the field to WorkUnitsDate/ExpensesDate, and lose
-                                  the header and trailer tags.
+                                  The time unit and duration specifications are contained in XML
+                                  Attributes in the record that follows. The time unit specification 
+                                  will be inserted into XMLData from that record (See (*1) below); 
+                                  the time duration specifications will be inserted when parsing the 
+                                  attributes (See (2) below).  
                                */
                                       "LinkableFactorId"
                                      ) THEN
@@ -352,17 +344,11 @@ BEGIN
                                ITERATE XLine; 
                                
                           WHEN PrevElementName IN ("ExpensesDateUnit","WorkUnitsDateUnit") THEN
-                          
-                               /* Insert the WorkUnit/Expense time period object header. */
-                               
-                               INSERT INTO XMLData (ID, ElementName, ElementValue, ElementFlags)
-                                      VALUES (0, SUBSTRING_INDEX(pElementName," ",1), "", pElementFlags);
-                                      
-                               /* Separate the time period unit from the time period specification.
-                                  Insert the time period unit and stage the time period specification
-                                  and rename the field to WorkUnitsDate/ExpensesDate.
+
+                               /* (*1) Insert the WorkUnit/Expense time period object header
+                                  containing the time period unit.
                                */
-                                      
+                               
                                INSERT INTO XMLData (ID, ElementName, ElementValue, ElementFlags)
                                       VALUES (0, PrevElementName,
                                               TRIM(LEADING "WorkUnits" FROM
@@ -371,18 +357,13 @@ BEGIN
                                                           )
                                                   ), pElementFlags
                                              );
-
-                               SET pElementName = CASE WHEN LEFT(pElementName,3) = "Exp"
-                                                       THEN "ExpensesDate"
-                                                       ELSE "WorkUnitsDate"
-                                                   END;
-
+                                             
                           WHEN pElementName IN ("ExtraData","/ExtraData")
 
                                /* ExtraData contains users' view specifications in "Sections"
                                   and will be treated like a Pool. Instances of the
                                   ExtraDataPool are ExtraDataSections whose attribute is
-                                  an "owner." Sections don't carry their own XID, so one will
+                                  "owner." Sections don't carry their own XID, so one will
                                   be provided for them. Each ExtraDataSection contains A series
                                   of Names (presented as attributes rather than elements(??))
                                   and corresponding Values.
@@ -393,83 +374,178 @@ BEGIN
                           ELSE SET i = i;
                      END CASE;
 
-
-                     /* Remove empty Objects (where the Object trailer tag immediately
-                        follows the Object header tag without any element value) so the
-                        iterator doesn't waste performance time by creating an unnecessary
-                        recursion loop for them.
-                     */
-
-                     IF pElementName = CONCAT("/",PrevElementName) THEN
-                        DELETE FROM XMLData WHERE ID = PrevElementID;
-                        SELECT MAX(ID) INTO PrevElementID FROM XMLData;
-                        SELECT ElementName INTO PrevElementName FROM XMLData WHERE ID = PrevElementID;
-                        ITERATE XLine;
-                        
-                     END IF;
-
-                     /* ... then Element Value */
-
-                     SET pElementValue =
-                         CASE WHEN pElementName IN ("WorkUnitsDate","ExpensesDate") THEN
-                                   TRIM(TRAILING ">" FROM
-                                        SUBSTRING_INDEX(XML_Line_Out," ",
-                                                        CASE WHEN XML_Line_Out LIKE "%Full%"
-                                                               OR XML_Line_Out LIKE "%Day%"
-                                                             THEN -1 ELSE -2
-                                                         END
-                                                       )
-                                        )
-                              ELSE
-                                   REPLACE(SUBSTRING_INDEX(
-                                              SUBSTRING_INDEX(XML_Line_Out,"</",1),">",-1
-                                                          ),CONCAT("^",x'0d'),""
-                                          )
-                          END;
-
-                    /* Insert parsed XML Data into its table for importing into the database. */
-
-                     INSERT INTO XMLData (ID, ElementName, ElementValue, ElementFlags)
-                            VALUES (0, pElementName, pElementValue,
-
-                                    /* Flag 8 = Second and subsequent consecutive elements
-                                                that form a multi-valued list OR second
-                                                and subsequent element sets that form a
-                                                multi-valued set.
-                                    */
-
-                                    CASE WHEN pElementName = PrevElementName
-                                           OR (    pElementName IN ("WrappedByDiagramFactorId",
-                                                                    "DiagramPoint"
-                                                                   )
-                                               AND PrevElementName IN ("/WrappedByDiagramFactorId",
-                                                                       "/DiagramPoint"
-                                                                      )
-                                              )
-                                         THEN pElementFlags + 8
-                                              
-                                         ELSE pElementFlags
-                                     END
-                                   );
-                                   
-                     SET PrevElementID = LAST_INSERT_ID();
+                     CASE WHEN pElementFlags & 2048 = 2048 
                      
-                     IF pElementFlags & (2048|8192) = FALSE THEN
+                               /* (*2) Record consists of an Object Header Tag followed by a list 
+                                  of attributes.
+                               */
+                               
+                               /* First, push the Object Header out to XMLData ... */
+                               
+                          THEN INSERT INTO XMLData (ID, ElementName, ElementValue, ElementFlags)
+                                      VALUES (0, pElementName, "", pElementFlags);
+                                      
+                               SET PrevElementID = LAST_INSERT_ID();
+                               SET PrevElementName = pElementName;
+                               
+                               /* ... determine the number of attributes ... */
 
-                        /* Don't allow Objects with attribute values but no other element
-                           present to be inadvertently discarded. (This possibility was
-                           introduced with Version 49(?)  and corrected in Version 50).
-                        */
-                        
-                        SET PrevELementName = pElementName;
-                     END IF;
+                               SET @SQLStmt = 
+                                   CONCAT("SELECT ExtractValue(\"",REPLACE(XML_Line_Out,"\"","\\\""),
+                                                               "</",pObjectName,">\",",
+                                                               "\"COUNT(/",pObjectName,"/@*)\"",
+                                                             ")",
+                                          " INTO @Count"
+                                         );
+                               PREPARE SQLStmt FROM @SQLStmt;
+                               EXECUTE SQLStmt;
+                               DEALLOCATE PREPARE SQLStmt;
+                               
+                               /* ... then iterate through the attributes. */
+
+                               SET j = 0;
+                               WHILE j < @Count DO
+                               
+                                     SET j = j + 1;
+                                     SET pElementName = SUBSTRING_INDEX(SUBSTRING_INDEX(XML_Line_Out,"=",j
+                                                                                       )," ",-1
+                                                                       );
+                                     IF  pElementName != "FullProjectTimespan" THEN
+                                     
+                                         /* Do not output the attribute for FullProjectTimespan.
+                                            There's no place to put it. The Object Header, written 
+                                            above, contains the Date Unit "FullProjectTimspan" and 
+                                            its value is self-defining. While this could be done by
+                                            the iterator, it would require an unncessary recursion
+                                            loop to do it; it is much more performance-sensitive
+                                            to do it here.
+                                         */
+                                  
+                                         SET @SQLStmt = 
+                                             CONCAT("INSERT INTO XMLData(ID, ElementName, ",
+                                                    "                    ElementValue, ElementFlags",
+                                                    "                   ) ",
+                                                    "VALUES ",
+                                                    "(0, \"", 
+                                                      CASE pElementName
+                                                           WHEN "Id" THEN "XID"
+                                                           WHEN "Year" THEN "StartYear"
+                                                           WHEN "Month" THEN "StartMonth"
+                                                           WHEN "Date" THEN "StartDate"
+                                                           WHEN "Key" THEN "StatusKey"
+                                                           WHEN "owner" THEN "Owner"
+                                                           WHEN "ExtraDataItemName" THEN "Name"
+                                                           ELSE pElementName
+                                                       END, "\", ",
+                                                    
+                                                    /* Note: A MySQL bug strips embedded quotes contained
+                                                       in attribute values (but correctly extracts them
+                                                       when contained in element values (!?)). 
+                                                       Those stripped quotes are replaced (for non-numeric
+                                                       values) where noted.
+                                                    */
+                                                    
+                                                    /* Replace stripped quotes for non-numeric values. */
+                                                    CASE WHEN pElementName IN ("Id","Month","Year","Date",
+                                                                               "StartMonth","StartYear"
+                                                                              )
+                                                         THEN ""
+                                                         ELSE "CONCAT(\"\\\"\","
+                                                     END, -- *
+                                                    "ExtractValue(\"",REPLACE(XML_Line_Out,"\"","\\\""),
+                                                                  "</",pObjectName,">\",\"//@",pElementName,"\"",
+                                                                ")",
+                                                                
+                                                    /* Replace stripped quotes for non-numeric values. */
+                                                    CASE WHEN pElementName IN ("Id","Month","Year","Date",
+                                                                               "StartMonth","StartYear"
+                                                                              )
+                                                         THEN ""
+                                                         ELSE ",\"\\\"\")"
+                                                     END, -- *
+                                                    ", ", pElementFlags, 
+                                                    ")"
+                                                   );
+
+                                         PREPARE SQLStmt FROM @SQLStmt;
+                                         EXECUTE SQLStmt;
+                                         DEALLOCATE PREPARE SQLStmt;
+                                         
+                                         SET PrevElementID = LAST_INSERT_ID();
+                                         SET PrevELementName = pElementName;
+                                     END IF;                                     
+                               END WHILE;
+                               
+                               ITERATE XLine; 
+
+                          ELSE
+                          
+                               /* Record consists of an Object Header or Trailer Tag, or an Element 
+                                  Name Tag and Value pair.
+                               */
+    
+                               /* Remove empty Objects (where the Object trailer tag immediately
+                                  follows the Object header tag without any element value) so the
+                                  iterator doesn't waste performance time by entering into an unnecessary
+                                  recursion loop for them.
+                               */
+          
+                               IF pElementName = CONCAT("/",PrevElementName) THEN
+                                  DELETE FROM XMLData WHERE ID = PrevElementID;
+                                  SELECT MAX(ID) INTO PrevElementID FROM XMLData;
+                                  SELECT ElementName INTO PrevElementName FROM XMLData WHERE ID = PrevElementID;
+                                  ITERATE XLine;
+                                  
+                               END IF;
+          
+                               /* ... then Element Value */
+                               
+                               SET @SQLStmt = 
+                                   CONCAT("SELECT ExtractValue(\"",XML_Line_Out,"\",\"/",pElementName,"\")",
+                                          "  INTO @ElementValue");
+                               PREPARE SQLStmt FROM @SQLStmt;
+                               EXECUTE SQLStmt;
+                               DEALLOCATE PREPARE SQLStmt;
+                               
+                               /* Insert parsed XML Data into its table for importing into the database. */
+          
+                               INSERT INTO XMLData (ID, ElementName, ElementValue, ElementFlags)
+                                      VALUES (0, pElementName, CASE WHEN @ElementValue IS NULL 
+                                                                    THEN "" 
+                                                                    ELSE @ElementValue 
+                                                                END,
+          
+                                              /* Flag 8 = Second and subsequent consecutive elements
+                                                          that form a multi-valued list OR second
+                                                          and subsequent element sets that form a
+                                                          multi-valued set.
+                                              */
+          
+                                              CASE WHEN pElementName = PrevElementName
+                                                     OR (    pElementName IN ("WrappedByDiagramFactorId",
+                                                                              "DiagramPoint"
+                                                                             )
+                                                         AND PrevElementName IN ("/WrappedByDiagramFactorId",
+                                                                                 "/DiagramPoint"
+                                                                                )
+                                                        )
+                                                   THEN pElementFlags + 8
+                                                        
+                                                   ELSE pElementFlags
+                                               END
+                                             );
+                                             
+                               SET PrevElementID = LAST_INSERT_ID();
+                               SET PrevELementName = pElementName;
+
+                     END CASE;
 
                END WHILE XLine;
-            END IF;
+            END IF; # NOT EOF
       END WHILE XRow;
       CLOSE c_xml;
       
-      /* Begin EOF Processing. */
+      /* End of Part 1. Begin EOF Processing. */
 
       /* Trace/Debug Statement */
 
@@ -660,9 +736,11 @@ BEGIN
                          REPLACE(
                             REPLACE(
                                REPLACE(
-                                  REPLACE(ElementValue,"&lt;","<"),"&gt;",">"
-                                      ),"&amp;","&"
-                                   ),"\\","\\\\"
+                                  REPLACE(
+                                     REPLACE(ElementValue,"&lt;","<"),"&gt;",">"
+                                         ),"&amp;","&"
+                                      ),"\\","\\\\"
+                                   ),"&apos;","\'"
                                 ),"&#39;","\'"
                              ),"\"","\\\""
                           ),"&quot;","\\\""
@@ -676,6 +754,8 @@ BEGIN
                                          
                                Flag 256 = Table stores rows from multiple factors and requires
                                           factor differentiation in Iterate_XML.
+                
+                               Flag 512 = ConservationProject header.
                 
                                Flag 1024 = ProjectSummary header.
                 
@@ -710,13 +790,16 @@ BEGIN
                                                      )
                                       THEN ElementFlags + 256 + 4096
                                        
-                                 WHEN ElementName = "ProjectSummary"
-                                      THEN ElementFlags + 1024
- 
                                  WHEN ElementName IN ("StatusEntry",
                                                       "ExtraDataSection"
                                                      )
                                       THEN ElementFlags + 4096
+                                      
+                                 WHEN ElementName = "ProjectSummary"
+                                      THEN ElementFlags + 1024
+ 
+                                 WHEN ElementName = "ConservationProject"
+                                      THEN ElementFlags + 512
                                       
                                  ELSE ElementFlags
                              END;
@@ -779,7 +862,12 @@ BEGIN
          INSERT INTO Trace VALUES (0,"End 32 Flags",CURRENT_TIME());
       END IF;
 
-      /* Flag 4 = Element is an Object Tag that corresponds to a database table. */
+      /* Flag 4 = Element is an Object Tag that corresponds to a database table. 
+      
+         The custom table MiradiTables is used to flag Table-equivalent Objects
+         rather than information_schema.TABLES because the latter is not indexed
+         - and cannot be indexed, thus it is unacceptably performance-insensitive.
+      */
 
       UPDATE XMLData
          SET ElementFlags = ElementFlags + 4

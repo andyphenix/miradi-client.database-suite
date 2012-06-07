@@ -1,22 +1,60 @@
 /*
-   sp_Iterate_XML_v54a.sql
+   sp_Iterate_XML_v55b.sql
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
 
-   Revised and modified from its earlier recursively-called edition which was extremely
+   **********************************************************************************************
+   
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
+
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
+
+   This procedure consists of two parts. Part 1 serially reads the table XMLData,
+   which contains the extracted Tag Names and Values from an XMPZ XML data stream 
+   LOADed from a Miradi project as written by the procedure sp_Parse_XML(). It iteratively
+   creates INSERT statements for each table in the database (for which there is data)
+   with each succeeding record in XMLData, prepares and executes the INSERTs. It also builds a
+   temporary table called ChildRefs, containing the subordinate tables that need to have 
+   references to their parents populated following the initial pass through XMLData.
+   
+   Part 1 is revised and modified from its earlier recursively-called edition which was extremely
    performance-insensitive. This edition maintains its own variable stack in a temporary
    table and performs its own internal recursions.
    
-   This is a recursively called procedure to populate the Miradi database with project data
+   (This is a recursively called procedure to populate the Miradi database with project data
    imported in an XMPZ XML stream. Source data is taken from the parsed XML Stream
    contained in the table XMLData. Subordinate Objects or references to Objects contained
    in each Object stream are processed by recursively calling this procedure from the first
-   element of the subordinate Object through its end, denoted by an Element Name of "/ObjectName".
+   element of the subordinate Object through its end, denoted by an Element Name of "/ObjectName".)
 
-   Developed by David Berg for The Nature Conservancy 
-        and the Greater Conservation Community.
+   Part 2, EOF Processing, begins by separating Tasks from Activities from Methods, whose objects
+   are all contained in the XML Object Class 'Task". It then populates parent references in subordinate 
+   tables from the table ChildRefs. (Because the serially-processed XMPZ XML data stream contains 
+   forward references to child elements, their parent references wouldn't be known until after the 
+   parent records are written.) Part 2 also determines work/expense plan start and end dates based on 
+   their attribute values from the XML data stream, and performs other miscellaneous housekeeping tasks.
 
    Revision History:
+   Version 55 - 2012-04-11 - Upgrade to be compatible with sp_Parse_XML() Version 52 and later.
+                           - XML attribute values are now already extracted and appear as
+                             any other column name & value pair.
+   Version 54b- 2012-04-04 - ANALYZE TABLE statement fails with an error when XML_Data is empty.
    Version 54a- 2012-03-19 - Fix error created by recomposition of v_KEAIndicator.
    Version 54 - 2012-03-04 - Consolidate ANALYZE TABLE statements.
    Version 53 - 2012-02-11 - Change the order of REPLACE parameters for the ANALYZE TABLE statements
@@ -187,38 +225,33 @@ BEGIN
       DECLARE pElementID INTEGER DEFAULT 0; -- Current Element ID
       DECLARE pElementName VARCHAR(255);    -- Current Element Name
       DECLARE pElementValue MEDIUMTEXT;     -- Current Element Value
-      DECLARE pElementFlags INTEGER;        /* A seried of bitwise flags to direct special processing
-                                               in called procedures ...
+      DECLARE pElementFlags INTEGER;        /* A series of bitwise flags to direct special
+                                                   processing in called procedures ...
 
-                                                  1 = Element is an Object header tag.
-                                                  2 = Element is the Object header of a Pool of
-                                                      multiple like Objects.
-                                                  4 = Element is an Object for which exists a Table.
-                                                  8 = Second and subsequent consecutive elements
-                                                      that form a multi-valued list OR second
-                                                      and subsequent element sets that form a
-                                                      multi-valued set., e.g. IDs or Codes.
-                                                 16 = Element is the Object header of a list of
-                                                      Many-to-One-or-Many elements.
-                                                 32 = Element is the Object header of a list of
-                                                      One-to-Many elements.
-                                                 64 = Object header for compound elements.
-                                                      The element name is a Factor Name;
-                                                      the element value is the Factor's XID.
-                                                128 = Element is the Object header of a list of
-                                                      recursive references.
-                                                256 = Element contains a reference to a table that
-                                                      shares multiple factors.
-                                                512 = Element is the Object header for
-                                                      ConservationProject.
-                                               1024 = Element is the Object header for 
-                                                      ProjectSummary.
-                                               2048 = ElementValue contains the current Factor's 
-                                                      XID Value.
-                                               4096 = Factor requires that an XID be created for it.
-                                               8192 = ElementValue contains the current Factor's 
-                                                      Attribute Value.
-                                            */
+                                                    1 = Element is an Object header tag.
+                                                    2 = Element is the Object header of a Pool of
+                                                        multiple like Objects.
+                                                    4 = Element is an Object for which exists a Table.
+                                                    8 = Second and subsequent consecutive elements
+                                                        that form a multi-valued list OR second
+                                                        and subsequent element sets that form a
+                                                        multi-valued set., e.g. IDs or Codes.
+                                                   16 = Element is the Object header of a list of
+                                                        Many-to-One-or-Many elements.
+                                                   32 = Element is the Object header of a list of
+                                                        One-to-Many elements.
+                                                   64 = Object header for compound elements.
+                                                        The element name is a Factor Name;
+                                                        the element value is the Factor's XID.
+                                                  128 = Element is the Object header of a list of
+                                                        recursive references.
+                                                  256 = Element is a table that shares 
+                                                        multiple factors.
+                                                  512 = Element is the Object header for ConservationProject.
+                                                 1024 = Element is the Object header for ProjectSummary.
+                                                 2048 = Element consists of an Object Header and Attribute(s).
+                                                 4096 = Factor requires that an XID be created for it.
+                                                */
                                                  
       DECLARE pPoolName VARCHAR(255);       -- Pool Name being processed.
       DECLARE pPoolFlags INTEGER;           -- ElementFlags from Pool Header.
@@ -421,64 +454,30 @@ Recur:
                      
                      /* Initialize pColNames and pColValues for this recursion. */
                      
-                     CASE WHEN pElementFlags & (2048|4096) IN (2048,4096) THEN
+                     SET pColNames = " (ID";
+                     SET pColValues = "(^0";
                      
-                               /* Save the XID of each row that may be the parent for (an) embedded
-                                  child(ren) for retroactive insertion as a relational reference in 
-                                  the child table during EOF processing.
-                            
-                                  Include the XID when initializing pColNames and pColValues.
-                                  
-                                  Flag 2048 = ElementValue contains this Object's XID 
-                
-                                  Flag 4096 = Object is a Factor that doesn't have its own XID and requires
-                                  the assignment of one. (E.g. ThreatRating.)
+                     IF   pElementFlags & 4096 = 4096 
+
+                     THEN /* Flag 4096 = Object is a Factor that doesn't have its own XID and requires
+                             the assignment of one. (E.g. ThreatRating.)
+                          */
                         
-                                  Note that pColValues is anchored with "^" to avoid possible corruption
-                                  while the value list is being constructed.
-                               */
-
-                               IF pElementFlags & 4096 = 4096 THEN
-
-                                   /* Flag 4096 = Object is a Factor that doesn't have its own XID and requires
-                                      the assignment of one. (E.g. ThreatRating.)
-                                   */
+                          SET pXID = pNewXID;     /* Hold onto XID value for referencing subordinate objects. */
+                          SET pNewXID = pNewXID + 1;
+                          SET pColNames = CONCAT(pColNames, ",XID");
+                          SET pColValues = CONCAT(pColValues, ",", pXID);
+                          
+                     END IF;
+                     
+                     IF   pObjectFlags & 8 = 8  /* Object Flag 8 = Multi-valued sets. */
+            
+                     THEN /* Close out the previous set and open a new set in the series of multi-valued sets. */
+               
+                          SET pColValues = CONCAT("),",pColValues);
                         
-                                   SET pXID = pNewXID;
-                                   SET pNewXID = pNewXID + 1;
-                              
-                               ELSE SET pXID = pElementValue;
-                          
-                               END IF;
-                     
-                               SET pColNames = " (ID,XID";
-                     
-                               IF pObjectFlags & 8 = 8 THEN /* Object Flag 8 = Multi-valued sets. */
-            
-                                   /* Close out the previous set and open a new set in the series of multi-valued sets. */
-               
-                                   SET pColValues = CONCAT("),(^0,",pXID);
-                          
-                               ELSE SET pColValues = CONCAT("(^0,",pXID);
+                     END IF;
                                
-                               END IF;
-                               
-                          ELSE /* Object header does not contain or require an XID */
-                          
-                               SET pColNames = " (ID";
-                                      
-                               IF pObjectFlags & 8 = 8 THEN /* Object Flag 8 = Multi-valued sets. */
-            
-                                    /* Close out the previous set and open a new set in the series of multi-valued sets. */
-               
-                                    SET pColValues = "),(^0";
-                           
-                               ELSE SET pColValues = "(^0";
-
-                               END IF;
-
-                     END CASE;
-                     
                      SET pElementName = "";
                      SET pElementValue = "";
                      SET pElementFlags = 0;
@@ -501,6 +500,10 @@ Recur:
   
                      ITERATE Recur;
                   END IF;
+                  
+                  /* Hold onto XID value for referencing subordinate objects. */
+                  
+                  IF pElementName = "XID" THEN SET pXID = pElementValue; END IF;
       
                   /* Flag 8 = the element is the second or later in a series of multiple values within an 
                               Object. Append succesive values to the value list (pColValues). 
@@ -737,41 +740,15 @@ Recur:
                   
                END IF;
 
-               IF pObjectFlags & 8192 = 8192 THEN
+               IF    pObjectFlags & 512 = 512 
                
-                  /* Factor's attribute name is contained in its object header's
-                     ElementValue, which is located in the record pointed to by
-                     the Stack Pointer.
-                  */
+               THEN /* Element is the ConservationProject Object Header. */
 
-                  SET pColValues = CONCAT(pColValues, ",\"", 
-                                          (SELECT ElementValue FROM Stack 
-                                            WHERE ElementID = pLastStackID
-                                          ),"\""
-                                         );
-                  CASE pTableName 
-                       WHEN "StatusEntry" THEN
-                            SET pColNames = CONCAT(pColNames, ",StatusKey");
+                    SET pColNames = CONCAT(pColNames, ", DatabaseImportDtm");
+                    SET pColValues = CONCAT(pColValues,",\"", CURRENT_TIMESTAMP(),"\"");
                                          
-                       WHEN "ExtraDataSection" THEN
-                            SET pColNames = CONCAT(pColNames, ",Owner");
-                                         
-                       WHEN "ExtraDataItem" THEN
-                            SET pColNames = CONCAT(pColNames, ",Name");
-                                         
-                       WHEN "ConservationProject" THEN
-                       
-                            /* Conservation Project Table also contains the timestamp of this import. */
-                            
-                            SET pColNames = CONCAT(pColNames, ",xmlns,DatabaseImportDtm");
-                            SET pColValues = CONCAT(pColValues,",\"", 
-                                                    CURRENT_TIMESTAMP(),"\""
-                                                   );
-                                         
-                       ELSE SET EOF = EOF;
+               ELSE SET EOF = EOF;
 
-                  END CASE;
-                  
                END IF;
                   
                /* Prepare and execute the insert of elements into their table.
@@ -887,38 +864,42 @@ Recur:
       CLOSE c_xml;
 
 
-      /* ANALYZE TABLEs. */
+      /* ANALYZE TABLEs (if, in fact, a project was imported). */
 
-      /* Trace/Debug Statement */
-
-      IF @Trace = TRUE THEN
-         INSERT INTO TRACE VALUES (0,"Analyze Tables", CURRENT_TIME());
-      END IF;
-
-      SET EOF = FALSE;
-      OPEN c_analyze1;
-
-      SET @SQLStmt = "ANALYZE TABLE ";
+      IF @ProjectSummaryID > 0 THEN
       
-      WHILE NOT EOF DO
-            FETCH c_analyze1 INTO pTableName;
+         /* Trace/Debug Statement */
 
-            IF NOT EOF THEN
-               SET @SQLStmt = CONCAT(@SQLStmt,pTableName,",");
-            END IF;
+         IF @Trace = TRUE THEN
+             INSERT INTO TRACE VALUES (0,"Analyze Tables", CURRENT_TIME());
+          END IF;
 
-      END WHILE;
-      CLOSE c_analyze1;
+          SET EOF = FALSE;
+          OPEN c_analyze1;
 
-      SET @SQLStmt = TRIM(TRAILING "," FROM @SQLStmt);
-      PREPARE SQLStmt FROM @SQLStmt;
-      EXECUTE SQLStmt;
-      DEALLOCATE PREPARE SQLStmt;
+          SET @SQLStmt = "ANALYZE TABLE ";
       
-      /* Trace/Debug Statement */
+          WHILE NOT EOF DO
+                FETCH c_analyze1 INTO pTableName;
 
-      IF @Trace = TRUE THEN
-         INSERT INTO TRACE VALUES (0,"End Analyze Tables", CURRENT_TIME());
+                IF NOT EOF THEN
+                   SET @SQLStmt = CONCAT(@SQLStmt,pTableName,",");
+                END IF;
+
+          END WHILE;
+          CLOSE c_analyze1;
+
+          SET @SQLStmt = TRIM(TRAILING "," FROM @SQLStmt);
+          PREPARE SQLStmt FROM @SQLStmt;
+          EXECUTE SQLStmt;
+          DEALLOCATE PREPARE SQLStmt;
+      
+          /* Trace/Debug Statement */
+
+          IF @Trace = TRUE THEN
+             INSERT INTO TRACE VALUES (0,"End Analyze Tables", CURRENT_TIME());
+          END IF;
+         
       END IF;
 
 
@@ -1261,38 +1242,46 @@ Child2:
       END IF;
 
 
-      /* ANALYZE TABLEs. */
+      /* ANALYZE TABLEs (if, in fact, a project was imported). */
 
-      /* Trace/Debug Statement */
-
-      IF @Trace = TRUE THEN
-         INSERT INTO TRACE VALUES (0,"Analyze Tables", CURRENT_TIME());
-      END IF;
-
-      SET EOF = FALSE;
-      OPEN c_analyze2;
-
-      SET @SQLStmt = "ANALYZE TABLE ";
+      IF @ProjectSummaryID > 0 THEN
       
-      WHILE NOT EOF DO
-            FETCH c_analyze2 INTO pTableName;
+         /* Trace/Debug Statement */
 
-            IF NOT EOF THEN
-               SET @SQLStmt = CONCAT(@SQLStmt,pTableName,",");
-            END IF;
+         IF @Trace = TRUE THEN
+            INSERT INTO TRACE VALUES (0,"Analyze Tables", CURRENT_TIME());
+         END IF;
 
-      END WHILE;
-      CLOSE c_analyze2;
+         SET EOF = FALSE;
+         OPEN c_analyze2;
 
-      SET @SQLStmt = CONCAT(@SQLStmt,"ExternalProjectId");
-      PREPARE SQLStmt FROM @SQLStmt;
-      EXECUTE SQLStmt;
-      DEALLOCATE PREPARE SQLStmt;
+         SET @SQLStmt = "ANALYZE TABLE ";
       
-      /* Trace/Debug Statement */
+         WHILE NOT EOF DO
+               FETCH c_analyze2 INTO pTableName;
 
-      IF @Trace = TRUE THEN
-         INSERT INTO TRACE VALUES (0,"End Analyze Tables", CURRENT_TIME());
+               IF NOT EOF THEN
+                  SET @SQLStmt = CONCAT(@SQLStmt,pTableName,",");
+               END IF;
+
+         END WHILE;
+         CLOSE c_analyze2;
+
+         IF   ProjectIdFlag = FALSE THEN 
+              SET @SQLStmt = CONCAT(@SQLStmt,"ExternalProjectId");
+         ELSE SET @SQLStmt = TRIM(TRAILING "," FROM @SQLStmt);
+         END IF;
+         
+         PREPARE SQLStmt FROM @SQLStmt;
+         EXECUTE SQLStmt;
+         DEALLOCATE PREPARE SQLStmt;
+      
+         /* Trace/Debug Statement */
+
+         IF @Trace = TRUE THEN
+            INSERT INTO TRACE VALUES (0,"End Analyze Tables", CURRENT_TIME());
+         END IF;
+
       END IF;
 
       /* Transform Target.ViabilityMode from "","TNC" to "Simple","KEA", respectively. */
@@ -1372,15 +1361,15 @@ Child2:
        WHERE IM.ProjectSummaryID = T1.ProjectSummaryID;
 
 
-      /* Create the components of Work Plan and Expense durations from their text elements. */
+      /* Create the components of Work Plan and Expense durations from their attribute values
+         where they have not already been populated. 
+      */
 
       UPDATE DateUnitWorkUnits, ProjectPlanning Plan
          SET StartYear =
-             CASE WHEN WorkUnitsDateUnit IN ("Month","Quarter","Year")
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"\"",2),"\"",-1)
-                  WHEN WorkUnitsDateUnit = "Day"
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"-",1),"\"",-1)
-                  WHEN WorkUnitsDateUnit LIKE "Full%"
+             CASE WHEN WorkUnitsDateUnit = "Day"
+                       THEN YEAR(DateUnitWorkUnits.StartDate)
+                  WHEN WorkUnitsDateUnit = "FullProjectTimespan"
                        THEN YEAR(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
                                            THEN Plan.WorkPlanStartDate
                                       WHEN Plan.StartDate IS NOT NULL
@@ -1390,11 +1379,9 @@ Child2:
                                 )
               END,
              StartMonth =
-             CASE WHEN WorkUnitsDateUnit IN ("Month","Quarter","Year")
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"\"",4),"\"",-1)
-                  WHEN WorkUnitsDateUnit = "Day"
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(WorkUnitsDate,"-",2),"-",-1)
-                  WHEN WorkUnitsDateUnit LIKE "Full%"
+             CASE WHEN WorkUnitsDateUnit = "Day"
+                       THEN MONTH(DateUnitWorkUnits.StartDate)
+                  WHEN WorkUnitsDateUnit = "FullProjectTimespan"
                        THEN MONTH(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
                                             THEN Plan.WorkPlanStartDate
                                        WHEN Plan.StartDate IS NOT NULL
@@ -1404,36 +1391,25 @@ Child2:
                                  )
               END
        WHERE Plan.ProjectSummaryID = DateUnitWorkUnits.ProjectSummaryID
-         AND DateUnitWorkUnits.ProjectSummaryID = @ProjectSummaryID;
+         AND DateUnitWorkUnits.ProjectSummaryID = @ProjectSummaryID
+         AND WorkUnitsDateUnit IN ("Day","FullProjectTimespan");
          
       UPDATE DateUnitWorkUnits, ProjectPlanning Plan
          SET DateUnitWorkUnits.StartDate =
-             CASE WHEN WorkUnitsDateUnit = "Day" THEN
-                       DATE(SUBSTRING_INDEX(
-                               SUBSTRING_INDEX(WorkUnitsDate,
-                                               '"',2
-                                              ),'"',-1
-                                           )
-                           )
-                  WHEN WorkUnitsDateUnit IN ("Month","Quarter","Year") THEN
+             CASE WHEN WorkUnitsDateUnit IN ("Month","Quarter","Year") THEN
                        DATE(CONCAT(StartYear,"-",StartMonth,"-01"))
-                  WHEN WorkUnitsDateUnit LIKE "%Full%" THEN
+                  WHEN WorkUnitsDateUnit = "FullProjectTimespan" THEN
                        CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
                                  THEN Plan.WorkPlanStartDate
                             WHEN Plan.StartDate IS NOT NULL
                                  THEN Plan.StartDate
                             ELSE CURRENT_DATE()
                         END
+                  ELSE DateUnitWorkUnits.StartDate
               END,
              DateUnitWorkUnits.EndDate =
              CASE WorkUnitsDateUnit
-                  WHEN "Day" THEN
-                       DATE(SUBSTRING_INDEX(
-                               SUBSTRING_INDEX(WorkUnitsDate,
-                                               '"',2
-                                              ),'"',-1
-                                           )
-                           )
+                  WHEN "Day" THEN DateUnitWorkUnits.StartDate
                   WHEN "Month" THEN
                        SUBDATE(ADDDATE(DATE(CONCAT(StartYear,"-",
                                                    StartMonth,
@@ -1481,11 +1457,9 @@ Child2:
 
       UPDATE DateUnitExpense, ProjectPlanning Plan
          SET StartYear =
-             CASE WHEN ExpensesDateUnit IN ("Month","Quarter","Year")
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"\"",2),"\"",-1)
-                  WHEN ExpensesDateUnit = "Day"
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"-",1),"\"",-1)
-                  WHEN ExpensesDateUnit LIKE "Full%"
+             CASE WHEN ExpensesDateUnit = "Day"
+                       THEN YEAR(DateUnitExpense.StartDate)
+                  WHEN ExpensesDateUnit = "FullProjectTimespan"
                        THEN YEAR(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
                                            THEN Plan.WorkPlanStartDate
                                       WHEN Plan.StartDate IS NOT NULL
@@ -1495,11 +1469,9 @@ Child2:
                                 )
               END,
              StartMonth =
-             CASE WHEN ExpensesDateUnit IN ("Month","Quarter","Year")
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"\"",4),"\"",-1)
-                  WHEN ExpensesDateUnit = "Day"
-                       THEN SUBSTRING_INDEX(SUBSTRING_INDEX(ExpensesDate,"-",2),"-",-1)
-                  WHEN ExpensesDateUnit LIKE "Full%"
+             CASE WHEN ExpensesDateUnit = "Day"
+                       THEN MONTH(DateUnitExpense.StartDate)
+                  WHEN ExpensesDateUnit = "FullProjectTimespan"
                        THEN MONTH(CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
                                             THEN Plan.WorkPlanStartDate
                                        WHEN Plan.StartDate IS NOT NULL
@@ -1509,36 +1481,25 @@ Child2:
                                  )
               END
        WHERE Plan.ProjectSummaryID = DateUnitExpense.ProjectSummaryID
-         AND DateUnitExpense.ProjectSummaryID = @ProjectSummaryID;
+         AND DateUnitExpense.ProjectSummaryID = @ProjectSummaryID
+         AND ExpensesDateUnit IN ("Day","FullProjectTimespan");
          
       UPDATE DateUnitExpense, ProjectPlanning Plan
          SET DateUnitExpense.StartDate =
-             CASE WHEN ExpensesDateUnit = "Day" THEN
-                       DATE(SUBSTRING_INDEX(
-                               SUBSTRING_INDEX(ExpensesDate,
-                                               '"',2
-                                              ),'"',-1
-                                           )
-                           )
-                  WHEN ExpensesDateUnit IN ("Month","Quarter","Year") THEN
+             CASE WHEN ExpensesDateUnit IN ("Month","Quarter","Year") THEN
                        DATE(CONCAT(StartYear,"-",StartMonth,"-01"))
-                  WHEN ExpensesDateUnit LIKE "%Full%" THEN
+                  WHEN ExpensesDateUnit = "FullProjectTimespan" THEN
                        CASE WHEN Plan.WorkPlanStartDate IS NOT NULL
                                  THEN Plan.WorkPlanStartDate
                             WHEN Plan.StartDate IS NOT NULL
                                  THEN Plan.StartDate
                             ELSE CURRENT_DATE()
                         END
+                  ELSE DateUnitExpense.StartDate
               END,
              DateUnitExpense.EndDate =
              CASE ExpensesDateUnit
-                  WHEN "Day" THEN
-                       DATE(SUBSTRING_INDEX(
-                               SUBSTRING_INDEX(ExpensesDate,
-                                               '"',2
-                                              ),'"',-1
-                                           )
-                           )
+                  WHEN "Day" THEN DateUnitExpense.StartDate
                   WHEN "Month" THEN
                        SUBDATE(ADDDATE(DATE(CONCAT(StartYear,"-",
                                                    StartMonth,
