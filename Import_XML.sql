@@ -22,7 +22,7 @@
    FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License along with the 
-   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   Miradi Database Suite. If not, it is situated at <http://www.gnu.org/licenses/gpl.html>
    and is incorporated herein by reference.
    
    **********************************************************************************************
@@ -106,8 +106,11 @@ CREATE TEMPORARY TABLE ProjectXML                  -- Contains raw XML file cont
 
 INSERT INTO Trace VALUES (0,"Begin XML Load",CURRENT_TIME());
 
-LOAD DATA LOCAL INFILE 'c:\\_data\\Miradi\\Eastern Bay\\project.xml'  # Microsoft format.
-# LOAD DATA LOCAL INFILE '/home/dberg/Miradi/Data/project.xml'          # UNIX format.
+/* NOTE: MySQL requires that INFILE names be hard coded in the SQL code and does not
+         allow LOAD DATA INFILE to be executed as a Dynamic SQL Statement.
+*/
+
+LOAD DATA LOCAL INFILE 'c:\\_data\\Miradi\\Eastern Bay\\XMPZ 3.3.2.xml'          # UNIX format.
      INTO TABLE ProjectXML FIELDS TERMINATED BY x'00'    /* Required because there are embedded
                                                             newlines in the data that would be
                                                             otherwise interpreted as field terminators.
@@ -194,8 +197,9 @@ INSERT INTO Trace VALUES (0,"Begin Parse",CURRENT_TIME());
 
 CALL sp_parse_xml();                     -- Parses raw XML contenst using "><" delimiters.
 
-/* Recursion in sp_iterate_xml() is accomplished by pushing and popping variable values
-   onto and from a stack table.
+/* Beginning with Version 08, recursion in sp_iterate_xml() is accomplished by pushing and 
+   popping variable values onto and from a stack table.
+ 
 */
 
 DROP TABLE IF EXISTS Stack;
@@ -218,9 +222,9 @@ CREATE TEMPORARY TABLE Stack
  LastStackID INTEGER
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
-/* Hierarchical forward references to Child tables are embedded within the Parent Object in
+/* Hierarchical forward references to Child tables are embedded within the Parent Object Set in
    the XML; they are thus processed and populated before the Parent Obejct's ID is known.
-   The temporary table ChildIDs stores IDs of objects subordinate to whichever parent is being
+   The temporary table ChildRefss stores IDs of objects subordinate to whichever parent is being
    processed so their parent references can be updated after the Parent row is inserted.
 */
 

@@ -1,4 +1,6 @@
 /*
+   TableDumps_v47.sql
+   
    Table Dumps for the Miradi Database.
 
    **********************************************************************************************
@@ -23,6 +25,8 @@
    
    **********************************************************************************************
 
+   Revision History:
+   Version 47 - 2012-07-01 - Corresponds to Miradi 3.3 Database_v47a.
 */
 
 USE Miradi;
@@ -76,11 +80,8 @@ SELECT * FROM v_RsrcYears ORDER BY ProjectSummaryID DESC, RsrcYear, Factor, Proj
 SELECT * FROM TaskActivityMethod ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM TaskActivityMethodProgressReport ORDER BY ProjectSummaryID DESC, TaskActivityMethodXID;
 SELECT * FROM TaskActivityMethodAssignment ORDER BY ProjectSummaryID DESC, TaskActivityMethodXID;
-#SELECT * FROM TaskActivityMethodCalculatedWorkUnits ORDER BY ProjectSummaryID DESC, Factor, TaskActivityMethodXID;
-#SELECT * FROM TaskActivityMethodCalculatedWho ORDER BY ProjectSummaryID DESC, Factor, TaskActivityMethodXID;
 SELECT * FROM TaskActivityMethodExpense ORDER BY ProjectSummaryID DESC, TaskActivityMethodXID;
-#SELECT * FROM TaskActivityMethodCalculatedExpense ORDER BY ProjectSummaryID DESC, Factor, TaskActivityMethodXID;
-SELECT * FROM SubTask ORDER BY ProjectSummaryID DESC;
+SELECT * FROM TaskSubTask ORDER BY ProjectSummaryID DESC;
 SELECT * FROM Target ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM BiodiversityTarget ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM HumanWelfareTarget ORDER BY ProjectSummaryID DESC, ID;
@@ -109,17 +110,22 @@ SELECT * FROM v_KeyAttributeIndicator ORDER BY ProjectSummaryID DESC, KeyAttribu
 SELECT * FROM IndicatorThreshold ORDER BY ProjectSummaryID DESC, IndicatorXID, StatusCode;
 SELECT * FROM ProgressReport ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM IndicatorProgressReport ORDER BY ProjectSummaryID DESC, IndicatorXID, ProgressReportXID;
+SELECT * FROM v_IndicatorProgressReport ORDER BY ProjectSummaryID DESC, IndicatorXID, XID;
 SELECT * FROM Measurement ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM IndicatorMeasurement ORDER BY ProjectSummaryID DESC, IndicatorXID, MeasurementXID;
 SELECT * FROM v_IndicatorMeasurement ORDER BY ProjectSummaryID DESC, IndicatorXID, XID;
 SELECT * FROM IndicatorMethod ORDER BY ProjectSummaryID DESC, IndicatorXID, Sequence;
+SELECT * FROM v_IndicatorMethod ORDER BY ProjectSummaryID DESC, IndicatorXID, Sequence;
 SELECT * FROM IndicatorAssignment ORDER BY ProjectSummaryID DESC, IndicatorXID, ResourceAssignmentXID;
+SELECT * FROM v_IndicatorAssignment ORDER BY ProjectSummaryID DESC, IndicatorXID, XID;
 SELECT * FROM IndicatorCalculatedWorkUnits ORDER BY ProjectSummaryID DESC, IndicatorXID, ProjectResourceXID;
 SELECT * FROM IndicatorCalculatedWho ORDER BY ProjectSummaryID DESC, IndicatorXID, ProjectResourceXID;
 SELECT * FROM IndicatorExpense ORDER BY ProjectSummaryID DESC, IndicatorXID, ExpenseAssignmentXID;
+SELECT * FROM v_IndicatorExpense ORDER BY ProjectSummaryID DESC, IndicatorXID, XID;
 SELECT * FROM IndicatorCalculatedExpense ORDER BY ProjectSummaryID DESC, IndicatorXID;
 SELECT * FROM Method ORDER BY ProjectSummaryID DESC, XID;
-SELECT * FROM MethodProgressReport ORDER BY ProjectSummaryID DESC, MethodXID;
+SELECT * FROM MethodProgressReport ORDER BY ProjectSummaryID DESC, MethodXID, ProgressReportXID;
+SELECT * FROM v_MethodProgressReport ORDER BY ProjectSummaryID DESC, MethodXID, XID;
 SELECT * FROM MethodAssignment ORDER BY ProjectSummaryID DESC, MethodXID, ResourceAssignmentXID;
 SELECT * FROM v_MethodAssignment ORDER BY ProjectSummaryID DESC, MethodXID, XID;
 SELECT * FROM MethodCalculatedWorkUnits ORDER BY ProjectSummaryID DESC, MethodXID, ProjectResourceXID;
@@ -128,8 +134,10 @@ SELECT * FROM MethodExpense ORDER BY ProjectSummaryID DESC, MethodXID, ExpenseAs
 SELECT * FROM v_MethodExpense ORDER BY ProjectSummaryID DESC, MethodXID, XID;
 SELECT * FROM MethodCalculatedExpense ORDER BY ProjectSummaryID DESC, MethodXID;
 SELECT * FROM MethodTask ORDER BY ProjectSummaryID DESC, MethodXID, Sequence;
+SELECT * FROM v_MethodTask ORDER BY ProjectSummaryID DESC, MethodXID, Sequence;
 SELECT * FROM Strategy ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM StrategyProgressReport ORDER BY ProjectSummaryID DESC, StrategyXID, ProgressReportXID;
+SELECT * FROM v_StrategyProgressReport ORDER BY ProjectSummaryID DESC, StrategyXID, XID;
 SELECT * FROM StrategyAssignment ORDER BY ProjectSummaryID DESC, StrategyXID, ResourceAssignmentXID;
 SELECT * FROM v_StrategyAssignment ORDER BY ProjectSummaryID DESC, StrategyXID, XID;
 SELECT * FROM StrategyCalculatedWorkUnits ORDER BY ProjectSummaryID DESC, StrategyXID, ProjectResourceXID;
@@ -142,11 +150,14 @@ SELECT * FROM StrategyThreat ORDER BY ProjectSummaryID DESC, StrategyXID, Threat
 SELECT * FROM StrategyTarget ORDER BY ProjectSummaryID DESC, StrategyXID, TargetXID;
 SELECT * FROM v_StrategyThreatTarget ORDER BY ProjectSummaryID DESC, StrategyXID, ThreatXID, TargetXID;
 SELECT * FROM StrategyObjective ORDER BY ProjectSummaryID DESC, StrategyXID, ObjectiveXID;
+SELECT * FROM v_StrategyObjective ORDER BY ProjectSummaryID DESC, StrategyXID, XID;
 SELECT * FROM StrategyGoal ORDER BY ProjectSummaryID DESC, StrategyXID, GoalXID;
+SELECT * FROM v_StrategyGoal ORDER BY ProjectSummaryID DESC, StrategyXID, XID;
 SELECT * FROM StrategyActivity ORDER BY ProjectSummaryID DESC, StrategyXID, Sequence;
 SELECT * FROM v_StrategyActivity ORDER BY ProjectSummaryID DESC, StrategyXID, Sequence;
 SELECT * FROM Activity ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM ActivityProgressReport ORDER BY ProjectSummaryID DESC, ActivityXID, ProgressReportXID;
+SELECT * FROM v_ActivityProgressReport ORDER BY ProjectSummaryID DESC, ActivityXID, XID;
 SELECT * FROM ActivityAssignment ORDER BY ProjectSummaryID DESC, ActivityXID, ResourceAssignmentXID;
 SELECT * FROM v_ActivityAssignment ORDER BY ProjectSummaryID DESC, ActivityXID, XID;
 SELECT * FROM ActivityCalculatedWorkUnits ORDER BY ProjectSummaryID DESC, ActivityXID, ProjectResourceXID;
@@ -157,8 +168,7 @@ SELECT * FROM ActivityCalculatedExpense ORDER BY ProjectSummaryID DESC, Activity
 SELECT * FROM ActivityTask ORDER BY ProjectSummaryID DESC, ActivityXID, Sequence;
 SELECT * FROM v_ActivityTask ORDER BY ProjectSummaryID DESC, XID, Sequence;
 SELECT * FROM Task ORDER BY ProjectSummaryID DESC, XID;
-SELECT * FROM TaskSubTask ORDER BY ProjectSummaryID DESC, TaskXID, SubTaskRef;
-SELECT * FROM v_TaskSubTask ORDER BY ProjectSummaryID DESC, TaskXID, Sequence;
+SELECT * FROM v_SubTask ORDER BY ProjectSummaryID DESC, TaskXID, Sequence;
 SELECT * FROM TaskProgressReport ORDER BY ProjectSummaryID DESC, TaskXID, ProgressReportXID;
 SELECT * FROM TaskAssignment ORDER BY ProjectSummaryID DESC, TaskXID, ResourceAssignmentXID;
 SELECT * FROM v_TaskAssignment ORDER BY ProjectSummaryID DESC, TaskXID, XID;
@@ -172,17 +182,28 @@ SELECT * FROM Goal ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM TargetGoal ORDER BY ProjectSummaryID DESC, TargetXID, GoalXID;
 SELECT * FROM BiodiversityTargetGoal ORDER BY ProjectSummaryID DESC, BiodiversityTargetXID, GoalID;
 SELECT * FROM HumanWelfareTargetGoal ORDER BY ProjectSummaryID DESC, HumanWelfareTargetXID, GoalXID;
+SELECT * FROM v_TargetGoal ORDER BY ProjectSummaryID DESC, TargetXID, XID;
 SELECT * FROM ObjectiveRelevantIndicator ORDER BY ProjectSummaryID DESC, ObjectiveXID, IndicatorXID;
+SELECT * FROM v_ObjectiveRelevantIndicator ORDER BY ProjectSummaryID DESC, ObjectiveXID, XID;
 SELECT * FROM GoalRelevantIndicator ORDER BY ProjectSummaryID DESC, GoalXID, IndicatorXID;
+SELECT * FROM v_GoalRelevantIndicator ORDER BY ProjectSummaryID DESC, GoalXID, XID;
 SELECT * FROM ObjectiveProgressReport ORDER BY ProjectSummaryID DESC, ObjectiveXID, ProgressReportXID;
+SELECT * FROM v_ObjectiveProgressReport ORDER BY ProjectSummaryID DESC, ObjectiveXID, XID;
 SELECT * FROM GoalProgressReport ORDER BY ProjectSummaryID DESC, GoalXID, ProgressReportXID;
+SELECT * FROM v_GoalProgressReport ORDER BY ProjectSummaryID DESC, GoalXID, XID;
 SELECT * FROM ObjectiveRelevantStrategy ORDER BY ProjectSummaryID DESC, ObjectiveXID, StrategyXID;
+SELECT * FROM v_ObjectiveRelevantStrategy ORDER BY ProjectSummaryID DESC, ObjectiveXID, XID;
 SELECT * FROM GoalRelevantStrategy ORDER BY ProjectSummaryID DESC, GoalXID, StrategyXID;
+SELECT * FROM v_GoalRelevantStrategy ORDER BY ProjectSummaryID DESC, GoalXID, XID;
 SELECT * FROM ObjectiveRelevantActivity ORDER BY ProjectSummaryID DESC, ObjectiveXID, ActivityXID;
+SELECT * FROM v_ObjectiveRelevantActivity ORDER BY ProjectSummaryID DESC, ObjectiveXID, XID;
 SELECT * FROM GoalRelevantActivity ORDER BY ProjectSummaryID DESC, GoalXID, ActivityXID;
+SELECT * FROM v_GoalRelevantActivity ORDER BY ProjectSummaryID DESC, GoalXID, XID;
 SELECT * FROM ProgressPercent ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM ObjectiveProgressPercent ORDER BY ProjectSummaryID DESC, ObjectiveXID, ProgressPercentXID;
+SELECT * FROM v_ObjectiveProgressPercent ORDER BY ProjectSummaryID DESC, ObjectiveXID, XID;
 SELECT * FROM GoalProgressPercent ORDER BY ProjectSummaryID DESC, GoalXID, ProgressPercentXID;
+SELECT * FROM v_GoalProgressPercent ORDER BY ProjectSummaryID DESC, GoalXID, XID;
 SELECT * FROM Cause ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM Threat ORDER BY ProjectSummaryID DESC, XID;
 SELECT * FROM CauseIndicator ORDER BY ProjectSummaryID DESC, CauseXID, IndicatorXID;

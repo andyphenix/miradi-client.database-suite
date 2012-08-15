@@ -1,5 +1,5 @@
 /*
-   TestSuite_v11.sql
+   TestSuite_v11c.sql
    
    Test Suite for the Miradi Database.
 
@@ -1414,6 +1414,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                         ProgressReport Prg3
                                                   WHERE Prg3.ID = StrPrg3.ProgressReportID
                                                     AND StrPrg3.StrategyID = StrPrg2.StrategyID
+                                                    AND ProgressDate IS NOT NULL
                                                 )
                                            THEN ProgressDate =
                                                    (SELECT MAX(ProgressDate)
@@ -1482,6 +1483,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                              ProgressReport Prg3
                                                        WHERE Prg3.ID = ActPrg3.ProgressReportID
                                                          AND ActPrg3.ActivityID = ActPrg2.ActivityID
+                                                         AND ProgressDate IS NOT NULL
                                                      )
                                                 THEN ProgressDate =
                                                      (SELECT MAX(ProgressDate)
@@ -1555,7 +1557,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                              ProgressReport Prg3
                                                        WHERE Prg3.ID = TaskPrg3.ProgressReportID
                                                          AND TaskPrg3.TaskID = TaskPrg2.TaskID
-                                                     )
+                                                         AND ProgressDate IS NOT NULL
+                                                    )
                                                 THEN ProgressDate =
                                                      (SELECT MAX(ProgressDate)
                                                         FROM TaskProgressReport TaskPrg4,
@@ -1606,7 +1609,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Fund.Code IS NOT NULL THEN CONCAT(Fund.Code,": ") ELSE "" END,
               CASE WHEN Fund.Name IS NOT NULL THEN Fund.Name ELSE "" END
              ) AS FundCode, BC1.Code AS CategoryOne, BC2.Code AS CategoryTwo,
-       WorkUnitsDateUnit, WorkUnitsDate, StartDate, EndDate, NumberOfUnits AS WorkUnits,
+       WorkUnitsDateUnit, StartDate, EndDate, NumberOfUnits AS WorkUnits,
        (SELECT SUM(NumberOfUnits)
           FROM DateUnitWorkUnits Work1
          WHERE Work1.Factor = "ResourceAssignment"
@@ -1656,7 +1659,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Fund.Code IS NOT NULL THEN CONCAT(Fund.Code,": ") ELSE "" END,
               CASE WHEN Fund.Name IS NOT NULL THEN Fund.Name ELSE "" END
              ) AS FundCode, BC1.Code AS CategoryOne, BC2.Code AS CategoryTwo,
-       WorkUnitsDateUnit, WorkUnitsDate, StartDate, EndDate, NumberOfUnits AS WorkUnits,
+       WorkUnitsDateUnit, StartDate, EndDate, NumberOfUnits AS WorkUnits,
        (SELECT SUM(NumberOfUnits)
           FROM DateUnitWorkUnits Work1
          WHERE Work1.Factor = "ResourceAssignment"
@@ -1711,7 +1714,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Fund.Code IS NOT NULL THEN CONCAT(Fund.Code,": ") ELSE "" END,
               CASE WHEN Fund.Name IS NOT NULL THEN Fund.Name ELSE "" END
              ) AS FundCode, BC1.Code AS CategoryOne, BC2.Code AS CategoryTwo,
-       WorkUnitsDateUnit, WorkUnitsDate, StartDate, EndDate, NumberOfUnits AS WorkUnits,
+       WorkUnitsDateUnit, StartDate, EndDate, NumberOfUnits AS WorkUnits,
        (SELECT SUM(NumberOfUnits)
           FROM DateUnitWorkUnits Work1
          WHERE Work1.Factor = "ResourceAssignment"
@@ -1762,7 +1765,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Fund.Code IS NOT NULL THEN CONCAT(Fund.Code,": ") ELSE "" END,
               CASE WHEN Fund.Name IS NOT NULL THEN Fund.Name ELSE "" END
              ) AS FundCode, BC1.Code AS CategoryOne, BC2.Code AS CategoryTwo,
-       ExpensesDateUnit, ExpensesDate, StartDate, EndDate, Expense,
+       ExpensesDateUnit, StartDate, EndDate, Expense,
        (SELECT SUM(Expense)
           FROM DateUnitExpense Exp1
          WHERE Exp1.Factor = "ExpenseAssignment"
@@ -1807,7 +1810,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Fund.Code IS NOT NULL THEN CONCAT(Fund.Code,": ") ELSE "" END,
               CASE WHEN Fund.Name IS NOT NULL THEN Fund.Name ELSE "" END
              ) AS FundCode, BC1.Code AS CategoryOne, BC2.Code AS CategoryTwo,
-       ExpensesDateUnit, ExpensesDate, StartDate, EndDate, Expense,
+       ExpensesDateUnit, StartDate, EndDate, Expense,
        (SELECT SUM(Expense)
           FROM DateUnitExpense Exp1
          WHERE Exp1.Factor = "ExpenseAssignment"
@@ -1857,7 +1860,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        CONCAT(CASE WHEN Fund.Code IS NOT NULL THEN CONCAT(Fund.Code,": ") ELSE "" END,
               CASE WHEN Fund.Name IS NOT NULL THEN Fund.Name ELSE "" END
              ) AS FundCode, BC1.Code AS CategoryOne, BC2.Code AS CategoryTwo,
-       ExpensesDateUnit, ExpensesDate, StartDate, EndDate, Expense,
+       ExpensesDateUnit, StartDate, EndDate, Expense,
        (SELECT SUM(Expense)
           FROM DateUnitExpense Exp1
          WHERE Exp1.Factor = "ExpenseAssignment"
@@ -1933,6 +1936,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                              ProgressReport Prg3
                                                        WHERE Prg3.ID = IndPrg3.ProgressReportID
                                                          AND IndPrg3.IndicatorID = IndPrg2.IndicatorID
+                                                         AND ProgressDate IS NOT NULL
                                                      )
                                                 THEN ProgressDate =
                                                      (SELECT MAX(ProgressDate)
@@ -2001,6 +2005,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                              ProgressReport Prg3
                                                        WHERE Prg3.ID = MethPrg3.ProgressReportID
                                                          AND MethPrg3.MethodID = MethPrg2.MethodID
+                                                         AND ProgressDate IS NOT NULL
                                                      )
                                                 THEN ProgressDate =
                                                      (SELECT MAX(ProgressDate)
@@ -2386,6 +2391,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                                  ProgressPercent Pct3
                                                            WHERE Pct3.ID = GlPct3.ProgressPercentID
                                                              AND GlPct3.GoalID = GlPct2.GoalID
+                                                             AND PercentDate IS NOT NULL
                                                          )
                                                     THEN PercentDate =
                                                          (SELECT MAX(PercentDate)
@@ -2446,6 +2452,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                                  ProgressPercent Pct3
                                                            WHERE Pct3.ID = ObjPct3.ProgressPercentID
                                                              AND ObjPct3.ObjectiveID = ObjPct2.ObjectiveID
+                                                             AND PercentDate IS NOT NULL
                                                          )
                                                     THEN PercentDate =
                                                          (SELECT MAX(PercentDate)
@@ -2511,6 +2518,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                                  ProgressPercent Pct3
                                                            WHERE Pct3.ID = ObjPct3.ProgressPercentID
                                                              AND ObjPct3.ObjectiveID = ObjPct2.ObjectiveID
+                                                             AND PercentDate IS NOT NULL
                                                          )
                                                     THEN PercentDate =
                                                          (SELECT MAX(PercentDate)
@@ -2537,6 +2545,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                                              ProgressReport Prg3
                                                                        WHERE Prg3.ID = StrPrg3.ProgressReportID
                                                                          AND StrPrg3.StrategyID = StrPrg2.StrategyID
+                                                                         AND ProgressDate IS NOT NULL
                                                                      )
                                                                   THEN ProgressDate =
                                                                      (SELECT MAX(ProgressDate)
@@ -2645,6 +2654,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                                  ProgressPercent Pct3
                                                            WHERE Pct3.ID = GlPct3.ProgressPercentID
                                                              AND GlPct3.GoalID = GlPct2.GoalID
+                                                             AND PercentDate IS NOT NULL
                                                          )
                                                     THEN PercentDate =
                                                          (SELECT MAX(PercentDate)
@@ -2705,7 +2715,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                                  ProgressPercent Pct3
                                                            WHERE Pct3.ID = ObjPct3.ProgressPercentID
                                                              AND ObjPct3.ObjectiveID = ObjPct2.ObjectiveID
-                                                         )
+                                                             AND PercentDate IS NOT NULL
+                                                        )
                                                     THEN PercentDate =
                                                          (SELECT MAX(PercentDate)
                                                             FROM ObjectiveProgressPercent ObjPct4,
@@ -2770,6 +2781,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                                  ProgressPercent Pct3
                                                            WHERE Pct3.ID = ObjPct3.ProgressPercentID
                                                              AND ObjPct3.ObjectiveID = ObjPct2.ObjectiveID
+                                                             AND PercentDate IS NOT NULL
                                                          )
                                                     THEN PercentDate =
                                                          (SELECT MAX(PercentDate)
@@ -2796,6 +2808,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                                              ProgressReport Prg3
                                                                        WHERE Prg3.ID = StrPrg3.ProgressReportID
                                                                          AND StrPrg3.StrategyID = StrPrg2.StrategyID
+                                                                         AND ProgressDate IS NOT NULL
                                                                      )
                                                                   THEN ProgressDate =
                                                                      (SELECT MAX(ProgressDate)
@@ -2860,6 +2873,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                          ProgressPercent Pct3
                                                   WHERE Pct3.ID = ObjPct3.ProgressPercentID
                                                     AND ObjPct3.ObjectiveID = ObjPct2.ObjectiveID
+                                                    AND PercentDate IS NOT NULL
                                                 )
                                            THEN PercentDate =
                                                    (SELECT MAX(PercentDate)
@@ -2903,6 +2917,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                          ProgressPercent Pct3
                                                   WHERE Pct3.ID = GoalPct3.ProgressPercentID
                                                     AND GoalPct3.GoalID = GoalPct2.GoalID
+                                                    AND PercentDate IS NOT NULL
                                                 )
                                            THEN PercentDate =
                                                    (SELECT MAX(PercentDate)
@@ -2936,7 +2951,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
        ProgressDate, ProgressStatus, fn_CalcWho(Ind.ProjectSummaryID,"Indicator",Ind.ID) AS Who,
        Ind.CalculatedStartDate, Ind.CalculatedEndDate, Ind.Details
   FROM ProjectSummary Summ, ExternalProjectId PID, Objective Obj, 
-       v_ObjectiveIndicator Ind
+       v_ObjectiveRelevantIndicator Ind
           LEFT JOIN (IndicatorProgressReport IndPrg, ProgressReport Prg)
                  ON (    Prg.ID = IndPrg.ProgressReportID
                      AND IndPrg.IndicatorID = Ind.ID
@@ -2949,6 +2964,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                              ProgressReport Prg3
                                                        WHERE Prg3.ID = IndPrg3.ProgressReportID
                                                          AND IndPrg3.IndicatorID = IndPrg2.IndicatorID
+                                                         AND ProgressDate IS NOT NULL
                                                      )
                                                 THEN ProgressDate =
                                                      (SELECT MAX(ProgressDate)
@@ -2996,7 +3012,8 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                              ProgressReport Prg3
                                                        WHERE Prg3.ID = IndPrg3.ProgressReportID
                                                          AND IndPrg3.IndicatorID = IndPrg2.IndicatorID
-                                                     )
+                                                         AND ProgressDate IS NOT NULL
+                                                    )
                                                 THEN ProgressDate =
                                                      (SELECT MAX(ProgressDate)
                                                         FROM IndicatorProgressReport IndPrg4,
@@ -3046,6 +3063,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                          ProgressPercent Pct3
                                                   WHERE Pct3.ID = ObjPct3.ProgressPercentID
                                                     AND ObjPct3.ObjectiveID = ObjPct2.ObjectiveID
+                                                    AND PercentDate IS NOT NULL
                                                 )
                                            THEN PercentDate =
                                                    (SELECT MAX(PercentDate)
@@ -3089,6 +3107,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                          ProgressPercent Pct3
                                                   WHERE Pct3.ID = GoalPct3.ProgressPercentID
                                                     AND GoalPct3.GoalID = GoalPct2.GoalID
+                                                    AND PercentDate IS NOT NULL
                                                 )
                                            THEN PercentDate =
                                                    (SELECT MAX(PercentDate)
@@ -3132,6 +3151,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                  (SELECT Date
                                                     FROM v_IndicatorMeasurement Meas3
                                                    WHERE Meas3.IndicatorID = IndMeas2.IndicatorID
+                                                     AND Date IS NOT NULL
                                                  )
                                             THEN Date =
                                                  (SELECT MAX(Date)
@@ -3174,6 +3194,7 @@ SELECT Summ.ID AS ProjectSummaryID, ProjectName, ProjectId,
                                                  (SELECT Date
                                                     FROM v_IndicatorMeasurement Meas3
                                                    WHERE Meas3.IndicatorID = IndMeas2.IndicatorID
+                                                     AND Date IS NOT NULL
                                                  )
                                             THEN Date =
                                                  (SELECT MAX(Date)

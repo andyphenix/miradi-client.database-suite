@@ -1,5 +1,5 @@
 /*
-   Miradi 3.3 Database v45.sql
+   Miradi 3.3 Database v47b.sql
 
    Miradi 3.3 Relational Database Schema
    Compatible with the MySQL Database Server, Version 5.0 and later.
@@ -8,7 +8,7 @@
    
    Developed by David Berg for The Nature Conservancy and the greater conservation community.
    
-   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   Copyright (c) 2010, 2011, 2012 David I. Berg. Distributed under the terms of GPL Version 3.
    
    This file is part of the Miradi Database Suite.
    
@@ -25,8 +25,7 @@
    and is incorporated herein by reference.
    
    **********************************************************************************************
-
-   This version of the schema is compatible with Miradi 3.3 and later versions employing 
+      This version of the schema is compatible with Miradi 3.3 and later versions employing 
    XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
    
    ** IMPORTANT NOTE: Views that join many parent/child tables join on XID rather than ID because 
@@ -41,8 +40,20 @@
                       to undo all of them.)
 
    Revision History:
+   Version 47b- 2012-08-06 - Added views v_ResultsChainStrategy, v_ResultsChainTarget,
+                             v_ConceptualModelStrategy, v_ConceptualModelTarget,
+                             v_StrategyProgressReport, v_ActivityProgressReport,
+                             v_TaskProgressReport, v_IndicatorProgressReport and others.
+                           - Update sp_DeleteProject to accommodate multiple projects.
+   Version 47a- 2012-06-30 - Rename SubTask to TaskSubTask. Create new view SubTask.
+   Version 46b- 2012-06-08 - Rename SubTaskRef back to SubTaskXID.
+   Version 46 - 2012-05-11 - Change the letter case of affected column names to match XML Schema
+                             for export purposes. (XML is case-sensitive.)
+                           - Change DiagramFactorFontSize to CHAR(4). (XML Expects 1.0, doesn't
+                             validate 1.00 (?!))
+                           - Move DatabaseImportDtm from ConservationProject to ProjectSummary.
    Version 45 - 2012-04-12 - Drop column WorkUnitDate from DateUnitWorkUnits and DateUnitExpense.
-   Version 44 - 2012-03-07 - Added views v_StrategyActivity, v_ObjectiveIndicator,
+   Version 44 - 2012-03-07 - Added views v_StrategyActivity, v_ObjectiveRelevantIndicator,
                              v_Task/Activity/MethodAssignment, v_Task/Activity/MethodExpense,
                              v_TargetKeyAttribute, v_KeyAttributeIndicator, v_TargetIndicator.
                            - Amended views v_IndicatorMeasurement, v_ThreatIndicator.
@@ -70,7 +81,7 @@
                              for Tagged Object Sets; fold WrappedByDiagramFactor into
                              DiagramFactor for simple diagrams.
                            - Ditto DiagramLinkBendPoint for DiagramPoints.v_TaskAss
-   Version 41a - 2011-08-25 - Correct a couple of copy/paste errors.
+   Version 41a- 2011-08-25 - Correct a couple of copy/paste errors.
    Version 41 - 2011-08-24 - Continued revisions and streamlining to the differentiation of
                              Tasks, Activities, Methods and their associations.
    Version 40 - 2011-07-23 - Add Factor to indexes on tables that have Factor references.
@@ -150,7 +161,7 @@
                            - Added MiradiTables to store all table names in the database.
                            - Added functions RATING() and RANKING();
                            - Added procedure sp_StrategyThreat();
-   Version 14 - 2011-02-16 - Changed ActivityTask Table to a View on TaskSubtask Table.
+   Version 14 - 2011-02-16 - Changed ActivityTask Table to a View on TaskSubTask Table.
    Version 13 - 2011-02-13 - Changed to corrspond to XML Schema Version 58.
    Version 12 - 2011-01-31 - Revisions following successful run using Version 11.
    Version 11 - 2011-01-28 - Changes to reflect revised XML Schema released this date.
@@ -180,7 +191,6 @@ CREATE TABLE ConservationProject
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER,
  xmlns VARCHAR(255),
- DatabaseImportDtm DATETIME,
  DeletedOrphans MEDIUMTEXT
 );
 
@@ -230,7 +240,8 @@ CREATE TABLE ProjectSummary             -- Objects-11
  OverallProjectViabilityRating CHAR(1),
  ThreatRatingMode ENUM("Simple","StressBased"),
  QuarterColumnsVisibility ENUM("ShowQuarterColumns","HideQuarterColumns"),
- WorkPlanTimeUnit ENUM("QUARTERLY","YEARLY")
+ WorkPlanTimeUnit ENUM("QUARTERLY","YEARLY"),
+ DatabaseImportDtm DATETIME
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
@@ -405,7 +416,7 @@ CREATE TABLE Organization                 -- Objects-42
  Name TEXT,
  RolesDescription TEXT,
  GivenName TEXT,
- SurName TEXT,
+ Surname TEXT,
  Email VARCHAR(255),
  PhoneNumber VARCHAR(50),
  Comments TEXT,
@@ -426,7 +437,7 @@ CREATE TABLE TNCProjectData               -- Objects-40
  ProjectResourcesScorecard TEXT,
  ProjectLevelComments TEXT,
  ProjectCitations TEXT,
- CAPStandardsScorecard TEXT,
+ CapStandardsScorecard TEXT,
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
@@ -450,7 +461,7 @@ CREATE TABLE TNCProjectPlaceTypes
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  TNCProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code VARCHAR(25),
+ code VARCHAR(25),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (TNCProjectDataID) REFERENCES TNCProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -461,7 +472,7 @@ CREATE TABLE TNCOrganizationalPriorities
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  TNCProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code VARCHAR(25),
+ code VARCHAR(25),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (TNCProjectDataID) REFERENCES TNCProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -472,7 +483,7 @@ CREATE TABLE TNCOperatingUnits
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  TNCProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code VARCHAR(10),
+ code VARCHAR(10),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (TNCProjectDataID) REFERENCES TNCProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -483,7 +494,7 @@ CREATE TABLE TNCTerrestrialEcoRegion
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  TNCProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code CHAR(5),
+ code CHAR(5),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (TNCProjectDataID) REFERENCES TNCProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -494,7 +505,7 @@ CREATE TABLE TNCMarineEcoRegion
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  TNCProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code CHAR(5),
+ code CHAR(5),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (TNCProjectDataID) REFERENCES TNCProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -505,7 +516,7 @@ CREATE TABLE TNCFreshwaterEcoRegion
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  TNCProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code CHAR(5),
+ code CHAR(5),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (TNCProjectDataID) REFERENCES TNCProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -524,7 +535,7 @@ CREATE TABLE WWFManagingOffices
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  WWFProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code CHAR(4),
+ code CHAR(4),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (WWFProjectDataID) REFERENCES WWFProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -535,7 +546,7 @@ CREATE TABLE WWFRegions
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  WWFProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code CHAR(2),
+ code CHAR(2),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (WWFProjectDataID) REFERENCES WWFProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -546,7 +557,7 @@ CREATE TABLE WWFEcoRegions
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  WWFProjectDataID INTEGER NOT NULL DEFAULT 0,
- Code INTEGER,
+ code INTEGER,
  CONSTRAINT FOREIGN KEY (WWFProjectDataID) REFERENCES WWFProjectData(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
@@ -558,9 +569,9 @@ CREATE TABLE WCSData                      -- Objects-39
  OrganizationalFocus TEXT,
  OrganizationalLevel TEXT,
  SwotCompleted TEXT,
- SwotURL TEXT,
+ SwotUrl TEXT,
  StepCompleted TEXT,
- StepURL TEXT,
+ StepUrl TEXT,
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
@@ -604,7 +615,7 @@ CREATE TABLE ProjectResource              -- Objects-7
  Resource_Id VARCHAR(255),
  ResourceType ENUM("Person","Group"),
  GivenName TEXT,
- SurName TEXT,
+ Surname TEXT,
  Organization VARCHAR(255),
  Position VARCHAR(255),
  Location VARCHAR(255),
@@ -617,7 +628,7 @@ CREATE TABLE ProjectResource              -- Objects-7
  IMService VARCHAR(255),
  IMAddress VARCHAR(255),
  DailyRate DECIMAL(8,2),
- IsCCNCoach BOOLEAN,
+ IsCcnCoach BOOLEAN,
  Custom1 TEXT,
  Custom2 TEXT,
  Comments TEXT,
@@ -633,7 +644,7 @@ CREATE TABLE ProjectResourceRoleCodes     -- Objects-7
  ProjectSummaryID INTEGER NOT NULL,
  ProjectResourceID INTEGER NOT NULL DEFAULT 0,
  ProjectResourceXID INTEGER NOT NULL,
- Code ENUM("TeamMember","Contact","Leader","Facilitator","Advisor","Stakeholder"),
+ code ENUM("TeamMember","Contact","Leader","Facilitator","Advisor","Stakeholder"),
  INDEX (ProjectSummaryID,ProjectResourceXID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (ProjectResourceID) REFERENCES ProjectResource(ID)
@@ -800,7 +811,7 @@ CREATE TABLE ExpenseAssignment            -- Objects-51
 DROP TABLE IF EXISTS CalculatedExpense;  -- Same format as Expense Assignment for Calculated Costs.
 CREATE TABLE CalculatedExpense LIKE ExpenseAssignment;
 ALTER TABLE CalculatedExpense            -- Table serves Strategy/Activity/Task/Indicator/Method.
-      ADD COLUMN Factor VARCHAR(25) NOT NULL AFTER XID,
+      ADD COLUMN Factor VARCHAR(25) NOT NULL AFTER XID,  -- Factor specifies to which each row applies.
       ADD COLUMN FactorID INTEGER NOT NULL DEFAULT 0 AFTER Factor,
       ADD COLUMN FactorXID INTEGER NOT NULL AFTER FactorID,
       ADD INDEX (FactorID),
@@ -1040,7 +1051,7 @@ CREATE TABLE TargetHabitatAssociation
  ProjectSummaryID INTEGER NOT NULL,
  TargetID INTEGER NOT NULL DEFAULT 0,
  TargetXID INTEGER NOT NULL,
- Code ENUM( "1","1.1","1.2","1.3","1.4","1.5","1.6","1.7","1.8","1.9",
+ code ENUM( "1","1.1","1.2","1.3","1.4","1.5","1.6","1.7","1.8","1.9",
             "2","2.1","2.2","3","3.1","3.2","3.3","3.4","3.5","3.6","3.7","3.8",
             "4","4.1","4.2","4.3","4.4","4.5","4.6","4.7",
             "5","5.1","5.2","5.3","5.4","5.5","5.6","5.7","5.8","5.9","5.10",
@@ -1064,7 +1075,7 @@ CREATE TABLE TargetHabitatAssociation
 DROP VIEW IF EXISTS BiodiversityTargetHabitatAssociation;
 CREATE VIEW BiodiversityTargetHabitatAssociation AS
        SELECT Hab.ID, Hab.ProjectSummaryID, Hab.TargetID AS BiodiversityTargetID,
-              Hab.TargetXID AS BiodiversityTargetXID, Code
+              Hab.TargetXID AS BiodiversityTargetXID, code
          FROM TargetHabitatAssociation Hab, BiodiversityTarget Tgt
         WHERE Tgt.ProjectSummaryID = Hab.ProjectSummaryID
           AND Tgt.XID = Hab.TargetXID;
@@ -1351,6 +1362,13 @@ CREATE TABLE IndicatorProgressReport
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_IndicatorProgressReport;
+CREATE VIEW v_IndicatorProgressReport AS
+       SELECT IndicatorID, IndicatorXID, Rpt.*
+         FROM IndicatorProgressReport IndRpt, ProgressReport Rpt
+        WHERE Rpt.ID = IndRpt.ProgressReportID;
+
+
 DROP VIEW IF EXISTS Method;                 /* Methods, Activities, and Tasks are all contained
                                                in the Task Pool with only the forward pointer of
                                                the Parent Object to differentiate them.
@@ -1388,6 +1406,13 @@ CREATE TABLE IndicatorMethod
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_IndicatorMethod;
+CREATE VIEW v_IndicatorMethod AS
+       SELECT IndicatorID, IndicatorXID, Sequence, Method.*
+         FROM IndicatorMethod IndMeth, Method
+        WHERE Method.ID = IndMeth.MethodID;
+
+
 DROP TABLE IF EXISTS IndicatorAssignment;
 CREATE TABLE IndicatorAssignment
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -1402,6 +1427,13 @@ CREATE TABLE IndicatorAssignment
  CONSTRAINT FOREIGN KEY (ResourceAssignmentID) REFERENCES ResourceAssignment(ID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+DROP VIEW IF EXISTS v_IndicatorAssignment;
+CREATE VIEW v_IndicatorAssignment AS
+       SELECT IndicatorID, IndicatorXID, Asgn.*
+         FROM IndicatorAssignment Indasgn, ResourceAssignment Asgn
+        WHERE Asgn.ID = IndAsgn.ResourceAssignmentID;
 
 
 DROP VIEW IF EXISTS IndicatorCalculatedWorkUnits;
@@ -1453,6 +1485,13 @@ CREATE VIEW IndicatorCalculatedExpense AS
           AND Exp.Factor = "Indicator";
 
 
+DROP VIEW IF EXISTS v_IndicatorExpense;
+CREATE VIEW v_IndicatorExpense AS
+       SELECT IndicatorID, IndicatorXID, Exp.*
+         FROM IndicatorExpense IndExp, ExpenseAssignment Exp
+        WHERE Exp.ID = IndExp.ExpenseAssignmentID;
+
+
 DROP TABLE IF EXISTS Strategy;
 CREATE TABLE Strategy                     -- Objects-21
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -1497,6 +1536,13 @@ CREATE TABLE StrategyProgressReport
  CONSTRAINT FOREIGN KEY (ProgressReportID) REFERENCES ProgressReport(ID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+DROP VIEW IF EXISTS v_StrategyProgressReport;
+CREATE VIEW v_StrategyProgressReport AS
+       SELECT StrategyID, StrategyXID, Rpt.*
+         FROM StrategyProgressReport StrRpt, ProgressReport Rpt
+        WHERE Rpt.ID = StrRpt.ProgressReportID;
 
 
 DROP TABLE IF EXISTS StrategyAssignment;
@@ -1641,6 +1687,7 @@ CREATE VIEW Activity AS
          FROM TaskActivityMethod
         WHERE Factor = "Activity";
 
+
 DROP TABLE IF EXISTS StrategyActivity;
 CREATE TABLE StrategyActivity
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -1689,7 +1736,19 @@ CREATE VIEW Task AS
         WHERE Factor = "Task";
 
 
-DROP TABLE IF EXISTS SubTask;           
+CREATE VIEW SubTask AS                      /* SubTasks have the same properties as Tasks.
+                                               They are associated to their parent Tasks
+                                               through the table TaskSubTask.
+                                            */
+       SELECT ID, ProjectSummaryID, XID, Factor, TaskActivityMethod_Id AS SubTask_Id,
+              Name, Details, Comments, CalculatedStartDate, CalculatedEndDate,
+              CalculatedWorkUnitsTotal, CalculatedExpenseTotal,
+              CalculatedTotalBudgetCost
+         FROM TaskActivityMethod                 
+        WHERE Factor = "Task";
+
+
+DROP TABLE IF EXISTS TaskSubTask;           
                                             /* Methods, Activities, and Tasks are all contained
                                                in the Task Pool with only the forward pointer of
                                                the Parent Object to differentiate them.
@@ -1698,47 +1757,35 @@ DROP TABLE IF EXISTS SubTask;
                                                The TaskActivityMethod Table was created previously 
                                                in this script.
                                             */
-CREATE TABLE SubTask         
+CREATE TABLE TaskSubTask         
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  TaskID INTEGER NOT NULL DEFAULT 0,
  TaskXID INTEGER NOT NULL,
  Sequence INTEGER NOT NULL DEFAULT 0,       /* IMPORTANT NOTE: The desired sequence to retrieve
-                                               TaskSubtask is the physical sequence their
+                                               TaskSubTask is the physical sequence their
                                                associations were exported in the XML.
                                                That sequence can be robustly assured with
-                                               SELECT ... ORDER BY TaskSubtask.Sequence;
+                                               SELECT ... ORDER BY TaskSubTask.Sequence;
                                             */
 
- SubtaskRef INTEGER NOT NULL DEFAULT 0,
+ SubTaskID INTEGER NOT NULL DEFAULT 0,
+ SubTaskXID INTEGER NOT NULL DEFAULT 0,
  INDEX (ProjectSummaryID,TaskXID,Sequence),
- INDEX (ProjectSummaryID,SubtaskRef),
+ INDEX (ProjectSummaryID,SubTaskXID),
  INDEX (TaskID,Sequence),
+ INDEX (SubTaskID),
  CONSTRAINT FOREIGN KEY (TaskID) REFERENCES TaskActivityMethod(ID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-DROP VIEW IF EXISTS TaskSubTask;
-CREATE VIEW TaskSubTask AS                  /* IMPORTANT NOTE: The desired sequence to retrieve
-                                               TaskSubtask is the physical sequence their
-                                               associations were exported in the XML.
-                                               That sequence can be robustly assured with
-                                               SELECT ... ORDER BY TaskSubtask.Sequence;
-                                            */
-       SELECT Subtask.ID, Subtask.ProjectSummaryID, Subtask.TaskID,          
-              Subtask.TaskXID, Subtask.Sequence, Subtask.SubTaskRef 
-         FROM Task, SubTask
-        WHERE Subtask.ProjectSummaryID = Task.ProjectSummaryID
-          AND Subtask.TaskXID = Task.XID;
-
-
-DROP VIEW IF EXISTS v_TaskSubTask;
-CREATE VIEW v_TaskSubTask AS
+DROP VIEW IF EXISTS v_SubTask;
+CREATE VIEW v_SubTask AS
        SELECT TaskID, TaskXID, Sequence, Task.*
          FROM TaskSubTask, Task
         WHERE Task.ProjectSummaryID = TaskSubTask.ProjectSummaryID
-          AND Task.XID = TaskSubTask.TaskXID;
+          AND Task.XID = TaskSubTask.SubTaskXID;
           
 
 DROP VIEW IF EXISTS ActivityTask;
@@ -1749,12 +1796,12 @@ CREATE VIEW ActivityTask AS                 /* IMPORTANT NOTE: The desired seque
                                                SELECT ... ORDER BY ActivityTask.Sequence;
                                             */
 
-       SELECT Subtask.ID, Subtask.ProjectSummaryID, Subtask.TaskID AS ActivityID,
-              Subtask.TaskXID AS ActivityXID, Subtask.Sequence, 
-              Subtask.SubtaskRef AS TaskXID
-         FROM Activity AS Act, SubTask
-        WHERE Subtask.ProjectSummaryID = Act.ProjectSummaryID
-          AND Subtask.TaskXID = Act.XID;
+       SELECT SubTask.ID, SubTask.ProjectSummaryID, SubTask.TaskID AS ActivityID,
+              SubTask.TaskXID AS ActivityXID, SubTask.Sequence, 
+              SubTask.SubTaskID AS TaskID, SubTask.SubTaskXID AS TaskXID
+         FROM Activity AS Act, TaskSubTask SubTask
+        WHERE SubTask.ProjectSummaryID = Act.ProjectSummaryID
+          AND SubTask.TaskXID = Act.XID;
 
 
 DROP VIEW IF EXISTS v_ActivityTask;
@@ -1773,13 +1820,21 @@ CREATE VIEW MethodTask AS                   /* IMPORTANT NOTE: The desired seque
                                                SELECT ... ORDER BY MethodTask.Sequence;
                                             */
 
-       SELECT SubTask.ID, Subtask.ProjectSummaryID, SubTask.TaskID AS MethodID,
+       SELECT SubTask.ID, SubTask.ProjectSummaryID, SubTask.TaskID AS MethodID,
               SubTask.TaskXID AS MethodXID, SubTask.Sequence, 
-              SubTask.SubTaskRef AS TaskXID
-         FROM Method AS Meth, SubTask
-        WHERE Subtask.ProjectSummaryID = Meth.ProjectSummaryID
-          AND Subtask.TaskXID = Meth.XID;
+              SubTask.SubTaskID AS TaskID, SubTask.SubTaskXID AS TaskXID
+         FROM Method AS Meth, TaskSubTask SubTask
+        WHERE SubTask.ProjectSummaryID = Meth.ProjectSummaryID
+          AND SubTask.TaskXID = Meth.XID;
 
+
+DROP VIEW IF EXISTS v_MethodTask;
+CREATE VIEW v_MethodTask AS
+       SELECT MethodID, MethodXID, Sequence, Task.*
+         FROM MethodTask MethTask, Task
+        WHERE Task.ProjectSummaryID = MethTask.ProjectSummaryID
+          AND Task.XID = MethTask.TaskXID;
+          
 
 DROP TABLE IF EXISTS TaskActivityMethodProgressReport;
 CREATE TABLE TaskActivityMethodProgressReport
@@ -1807,6 +1862,13 @@ CREATE VIEW TaskProgressReport AS
           AND Task.XID = Rpt.TaskActivityMethodXID;
 
 
+DROP VIEW IF EXISTS v_TaskProgressReport;
+CREATE VIEW v_TaskProgressReport AS
+       SELECT TaskID, TaskXID, Rpt.*
+         FROM TaskProgressReport TaskRpt, ProgressReport Rpt
+        WHERE Rpt.ID = TaskRpt.ProgressReportID;
+
+
 DROP VIEW IF EXISTS ActivityProgressReport;
 CREATE VIEW ActivityProgressReport AS
        SELECT Rpt.ID, Rpt.ProjectSummaryID, Rpt.TaskActivityMethodID AS ActivityID, 
@@ -1817,6 +1879,13 @@ CREATE VIEW ActivityProgressReport AS
           AND Act.XID = Rpt.TaskActivityMethodXID;
 
 
+DROP VIEW IF EXISTS v_ActivityProgressReport;
+CREATE VIEW v_ActivityProgressReport AS
+       SELECT ActivityID, ActivityXID, Rpt.*
+         FROM ActivityProgressReport ActRpt, ProgressReport Rpt
+        WHERE Rpt.ID = ActRpt.ProgressReportID;
+
+
 DROP VIEW IF EXISTS MethodProgressReport;
 CREATE VIEW MethodProgressReport AS
        SELECT Rpt.ID, Rpt.ProjectSummaryID, Rpt.TaskActivityMethodID AS MethodID, 
@@ -1825,6 +1894,13 @@ CREATE VIEW MethodProgressReport AS
          FROM TaskActivityMethodProgressReport Rpt, Method
         WHERE Method.ProjectSummaryID = Rpt.ProjectSummaryID
           AND Method.XID = Rpt.TaskActivityMethodXID;
+
+
+DROP VIEW IF EXISTS v_MethodProgressReport;
+CREATE VIEW v_MethodProgressReport AS
+       SELECT MethodID, MethodXID, Rpt.*
+         FROM MethodProgressReport MethRpt, ProgressReport Rpt
+        WHERE Rpt.ID = MethRpt.ProgressReportID;
 
 
 DROP TABLE IF EXISTS TaskActivityMethodAssignment;
@@ -2157,6 +2233,13 @@ CREATE VIEW HumanWelfareTargetGoal AS
           AND Tgt.XID = Goal.TargetXID;
 
 
+DROP VIEW IF EXISTS v_TargetGoal;
+CREATE VIEW v_TargetGoal AS
+       SELECT TargetID, TargetXID, Goal.*
+         FROM TargetGoal TgtGoal, Goal
+        WHERE Goal.ID = TgtGoal.GoalID;
+        
+
 DROP TABLE IF EXISTS ObjectiveRelevantIndicator;
 CREATE TABLE ObjectiveRelevantIndicator
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -2173,8 +2256,8 @@ CREATE TABLE ObjectiveRelevantIndicator
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-DROP VIEW IF EXISTS v_ObjectiveIndicator;        -- Joins ObjectiveRelevantIndicator with Indicator.
-CREATE VIEW v_ObjectiveIndicator AS
+DROP VIEW IF EXISTS v_ObjectiveRelevantIndicator;        -- Joins ObjectiveRelevantIndicator with Indicator.
+CREATE VIEW v_ObjectiveRelevantIndicator AS
        SELECT ObjectiveID, ObjectiveXID, Ind.*
          FROM ObjectiveRelevantIndicator Obj, Indicator Ind
         WHERE Ind.ID = Obj.IndicatorID; 
@@ -2196,7 +2279,14 @@ CREATE TABLE GoalRelevantIndicator
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
-DROP TABLE IF EXISTS ObjectiveThreat;
+DROP VIEW IF EXISTS v_GoalRelevantIndicator;        -- Joins GoalRelevantIndicator with Indicator.
+CREATE VIEW v_GoalRelevantIndicator AS
+       SELECT GoalID, GoalXID, Ind.*
+         FROM GoalRelevantIndicator Goal, Indicator Ind
+        WHERE Ind.ID = Goal.IndicatorID; 
+
+
+DROP TABLE IF EXISTS GoalectiveThreat;
 CREATE TABLE ObjectiveThreat
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
@@ -2246,6 +2336,13 @@ CREATE TABLE ObjectiveProgressReport
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_ObjectiveProgressReport;
+CREATE VIEW v_ObjectiveProgressReport AS
+            SELECT ObjectiveID, ObjectiveXID, Rpt.*
+              FROM ObjectiveProgressReport ObjRpt, ProgressReport Rpt
+             WHERE Rpt.ID = ObjRpt.ProgressReportID;
+
+
 DROP TABLE IF EXISTS GoalProgressReport;
 CREATE TABLE GoalProgressReport
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -2260,6 +2357,13 @@ CREATE TABLE GoalProgressReport
  CONSTRAINT FOREIGN KEY (ProgressReportID) REFERENCES ProgressReport(ID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+DROP VIEW IF EXISTS v_GoalProgressReport;
+CREATE VIEW v_GoalProgressReport AS
+            SELECT GoalID, GoalXID, Rpt.*
+              FROM GoalProgressReport GoalRpt, ProgressReport Rpt
+             WHERE Rpt.ID = GoalRpt.ProgressReportID;
 
 
 DROP TABLE IF EXISTS ObjectiveRelevantStrategy;
@@ -2278,6 +2382,13 @@ CREATE TABLE ObjectiveRelevantStrategy
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_ObjectiveRelevantStrategy;
+CREATE VIEW v_ObjectiveRelevantStrategy AS
+       SELECT ObjectiveID, ObjectiveXID, Str.*
+         FROM ObjectiveRelevantStrategy ObjStr, Strategy Str
+        WHERE Str.ID = ObjStr.StrategyID;
+
+
 DROP TABLE IF EXISTS GoalRelevantStrategy;
 CREATE TABLE GoalRelevantStrategy
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -2292,6 +2403,13 @@ CREATE TABLE GoalRelevantStrategy
  CONSTRAINT FOREIGN KEY (StrategyID) REFERENCES Strategy(ID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+DROP VIEW IF EXISTS v_GoalRelevantStrategy;
+CREATE VIEW v_GoalRelevantStrategy AS
+       SELECT GoalID, GoalXID, Str.*
+         FROM GoalRelevantStrategy GoalStr, Strategy Str
+        WHERE Str.ID = GoalStr.StrategyID;
 
 
 DROP TABLE IF EXISTS StrategyObjective;
@@ -2310,6 +2428,13 @@ CREATE TABLE StrategyObjective
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_StrategyObjective;
+CREATE VIEW v_StrategyObjective AS
+       SELECT StrategyID, StrategyXID, Obj.*
+         FROM StrategyObjective StrObj, Objective Obj
+        WHERE Obj.ID = StrObj.ObjectiveID;
+
+
 DROP TABLE IF EXISTS StrategyGoal;
 CREATE TABLE StrategyGoal
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -2324,6 +2449,13 @@ CREATE TABLE StrategyGoal
  CONSTRAINT FOREIGN KEY (StrategyID) REFERENCES Strategy(ID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+DROP VIEW IF EXISTS v_StrategyGoal;
+CREATE VIEW v_StrategyGoal AS
+       SELECT StrategyID, StrategyXID, Goal.*
+         FROM StrategyGoal StrGoal, Goal Goal
+        WHERE Goal.ID = StrGoal.GoalID;
 
 
 DROP TABLE IF EXISTS ObjectiveRelevantActivity;
@@ -2342,6 +2474,13 @@ CREATE TABLE ObjectiveRelevantActivity
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_ObjectiveRelevantActivity;
+CREATE VIEW v_ObjectiveRelevantActivity AS
+       SELECT ObjectiveID, ObjectiveXID, Act.*
+         FROM ObjectiveRelevantActivity ObjAct, Activity Act
+        WHERE Act.ID = ObjAct.ActivityID;
+        
+
 DROP TABLE IF EXISTS GoalRelevantActivity;
 CREATE TABLE GoalRelevantActivity
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -2357,6 +2496,13 @@ CREATE TABLE GoalRelevantActivity
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
+
+DROP VIEW IF EXISTS v_GoalRelevantActivity;
+CREATE VIEW v_GoalRelevantActivity AS
+       SELECT GoalID, GoalXID, Act.*
+         FROM GoalRelevantActivity GoalAct, Activity Act
+        WHERE Act.ID = GoalAct.ActivityID;
+        
 
 DROP TABLE IF EXISTS ProgressPercent;
 CREATE TABLE ProgressPercent
@@ -2387,6 +2533,13 @@ CREATE TABLE ObjectiveProgressPercent
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+DROP VIEW IF EXISTS v_ObjectiveProgressPercent;
+CREATE VIEW v_ObjectiveProgressPercent AS
+            SELECT ObjectiveID, ObjectiveXID, Pct.*
+              FROM ObjectiveProgressPercent ObjPct, ProgressPercent Pct
+             WHERE Pct.ID = ObjPct.ProgressPercentID;
+
+
 DROP TABLE IF EXISTS GoalProgressPercent;
 CREATE TABLE GoalProgressPercent
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -2401,6 +2554,13 @@ CREATE TABLE GoalProgressPercent
  CONSTRAINT FOREIGN KEY (GoalID) REFERENCES Goal(ID),
  CONSTRAINT FOREIGN KEY (ProgressPercentID) REFERENCES ProgressPercent(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+DROP VIEW IF EXISTS v_GoalProgressPercent;
+CREATE VIEW v_GoalProgressPercent AS
+            SELECT GoalID, GoalXID, Pct.*
+              FROM GoalProgressPercent GoalPct, ProgressPercent Pct
+             WHERE Pct.ID = GoalPct.ProgressPercentID;
 
 
 DROP TABLE IF EXISTS Cause;
@@ -2719,14 +2879,14 @@ CREATE TABLE DiagramFactor                -- Objects-18
  ProjectSummaryID INTEGER NOT NULL,
  XID INTEGER NOT NULL,
  Name TEXT,
- X INTEGER,
- Y INTEGER,
- Width SMALLINT,
- Height SMALLINT,
+ x INTEGER,
+ y INTEGER,
+ width SMALLINT,
+ height SMALLINT,
  WrappedByDiagramFactor VARCHAR(25),
  WrappedByDiagramFactorXID INTEGER,
  TextBoxZOrderCode ENUM("Back","Front"),
- DiagramFactorFontSize DECIMAL(3,2),          -- 1.0|0.5|0.75|0.9|1.25|1.75|2.5
+ DiagramFactorFontSize ENUM("1.0","0.5","0.75","0.9","1.25","1.75","2.5"),
  DiagramFactorFontStyle ENUM("","<B>","<U>","<S>"),
  DiagramFactorFontColor ENUM("#000000","#4E4848","#FF0000","#FF6600","#FFCC00","#007F00",
                              "#0000CC","#9900FF","#C85A17","#6D7B8D","#FFFFFF","#FF00FF",
@@ -2793,8 +2953,8 @@ CREATE TABLE DiagramLinkBendPoint
  ProjectSummaryID INTEGER NOT NULL,
  DiagramLinkID INTEGER NOT NULL DEFAULT 0,
  DiagramLinkXID INTEGER NOT NULL,
- X SMALLINT,
- Y SMALLINT,
+ x SMALLINT,
+ y SMALLINT,
  INDEX (ProjectSummaryID, DiagramLinkXID),
  FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  FOREIGN KEY (DiagramLinkID) REFERENCES DiagramLink(ID)
@@ -2986,6 +3146,28 @@ CREATE VIEW v_ConceptualModelFactor AS
           AND CMDF.ConceptualModelID = CM.ID;
 
 
+DROP VIEW IF EXISTS v_ConceptualModelStrategy;  -- Joins ConceptualModelDiagramFactor with Strategy.
+CREATE VIEW v_ConceptualModelStrategy
+    AS SELECT CMDF.ConceptualModelID, CMDF.ConceptualModelXID, Str.*
+         FROM ConceptualModelDiagramFactor CMDF,
+              DiagramFactor DF, Strategy Str
+        WHERE Str.ProjectSummaryID = DF.ProjectSummaryID
+          AND Str.XID = DF.WrappedByDiagramFactorXID
+          AND DF.ID = CMDF.DiagramFactorID
+          AND DF.WrappedByDiagramFactor = "Strategy";
+          
+          
+DROP VIEW IF EXISTS v_ConceptualModelTarget;  -- Joins ConceptualModelDiagramFactor with Target.
+CREATE VIEW v_ConceptualModelTarget
+    AS SELECT CMDF.ConceptualModelID, CMDF.ConceptualModelXID, Tgt.*
+         FROM ConceptualModelDiagramFactor CMDF,
+              DiagramFactor DF, Target Tgt
+        WHERE Tgt.ProjectSummaryID = DF.ProjectSummaryID
+          AND Tgt.XID = DF.WrappedByDiagramFactorXID
+          AND DF.ID = CMDF.DiagramFactorID
+          AND DF.WrappedByDiagramFactor LIKE "%Target";
+          
+          
 DROP TABLE IF EXISTS ConceptualModelDiagramLink;
 CREATE TABLE ConceptualModelDiagramLink
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -3104,6 +3286,28 @@ CREATE VIEW v_ResultsChainFactor AS
           AND RCDF.ResultsChainID = RC.ID;
 
 
+DROP VIEW IF EXISTS v_ResultsChainStrategy;  -- Joins ResultsChainDiagramFactor with Strategy.
+CREATE VIEW v_ResultsChainStrategy
+    AS SELECT RCDF.ResultsChainID, RCDF.ResultsChainXID, Str.*
+         FROM ResultsChainDiagramFactor RCDF,
+              DiagramFactor DF, Strategy Str
+        WHERE Str.ProjectSummaryID = DF.ProjectSummaryID
+          AND Str.XID = DF.WrappedByDiagramFactorXID
+          AND DF.ID = RCDF.DiagramFactorID
+          AND DF.WrappedByDiagramFactor = "Strategy";
+          
+          
+DROP VIEW IF EXISTS v_ResultsChainTarget;  -- Joins ResultsChainDiagramFactor with Target.
+CREATE VIEW v_ResultsChainTarget
+    AS SELECT RCDF.ResultsChainID, RCDF.ResultsChainXID, Tgt.*
+         FROM ResultsChainDiagramFactor RCDF,
+              DiagramFactor DF, Target Tgt
+        WHERE Tgt.ProjectSummaryID = DF.ProjectSummaryID
+          AND Tgt.XID = DF.WrappedByDiagramFactorXID
+          AND DF.ID = RCDF.DiagramFactorID
+          AND DF.WrappedByDiagramFactor LIKE "%Target";
+          
+          
 DROP TABLE IF EXISTS ResultsChainDiagramLink;
 CREATE TABLE ResultsChainDiagramLink
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
@@ -3232,7 +3436,7 @@ CREATE TABLE DashboardFlags
  ProjectSummaryID INTEGER NOT NULL,
  StatusEntryID INTEGER NOT NULL DEFAULT 0,
  StatusEntryXID INTEGER NOT NULL,
- Code ENUM("NeedsAttention"),
+ code ENUM("needsAttention"),
  INDEX (ProjectSummaryID,StatusEntryXID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID),
  CONSTRAINT FOREIGN KEY (StatusEntryID) REFERENCES StatusEntry(ID)
@@ -3244,7 +3448,7 @@ CREATE TABLE ExtraDataSection             -- Objects-5
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  XID INTEGER NOT NULL,
- Owner VARCHAR(255),
+ owner VARCHAR(255),
  INDEX (ProjectSummaryID,XID),
  CONSTRAINT FOREIGN KEY (ProjectSummaryID) REFERENCES ProjectSummary(ID)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
@@ -3633,25 +3837,61 @@ END $$
 DELIMITER ;
 
 /*
-   sp_DeleteProject_v2.sql
+   sp_DeleteProject_v3.sql
 
    Delete entire projects from the Miradi database by ProjectSummaryID.
    
-   CALL sp_DeleteProject(nn), where nn = ProjectSummaryID.
+   **********************************************************************************************
    
-   If you specify ProjectSummaryID = 0, all projects will be deleted!
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
 
-   Developed by David Berg for The Nature Conservancy.
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at <http://www.gnu.org/licenses/gpl.html>
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
+
+  If you specify ProjectSummaryID = 0, all projects will be deleted!
+
+  To invoke this procedure for all projects in the Miradi Database ...
+   
+        CALL sp_DeleteProjects(0); [or ("0") ]
+        
+   To invoke this procedure for selected projects in the Miradi Database, you need to determine
+   the ProjectSummaryID for the projects you wish to delete. To view them ...
+   
+        SELECT * FROM v_Project;
+        
+   ... and note the ProjectSummaryID for each project you wish to delete. Then, invoke 
+  the procedure with a comma-separated list of ProjectSummaryIDs, all enclosed in quotes ...
+   
+        CALL sp_DeleteProject("43,44,45,...");
+
 
    Revision History:
+   Version 03 - 2011-08-10 - Enable the specification of multiple projects.
    Version 02 - 2011-11-09 - Add table MiradiColumns to exclusion list.
    Version 01 - 2010-12-27 - Initial Version.
 */
 
+USE Miradi;
+
 DELIMITER $$
 
 DROP PROCEDURE IF EXISTS sp_DeleteProject $$
-CREATE PROCEDURE sp_DeleteProject (pProjectSummaryID INTEGER)
+CREATE PROCEDURE sp_DeleteProject (ProjectSummaryList VARCHAR(255))
 
 BEGIN
 
@@ -3661,30 +3901,33 @@ BEGIN
       /* Cursor to select each table name from the Table Catalog. */
 
       DECLARE c_Table CURSOR FOR
-              SELECT TABLE_NAME
-                FROM information_schema.TABLES
-               WHERE TABLE_SCHEMA = DATABASE()
-                 AND TABLE_TYPE = "BASE TABLE"
-                 AND TABLE_NAME NOT IN ("ProjectID","MiradiTables","MiradiColumns","XMPZSchema");
+              SELECT Tbl.TABLE_NAME
+                FROM information_schema.TABLES Tbl, information_schema.COLUMNS Col
+               WHERE Col.TABLE_SCHEMA = Tbl.TABLE_SCHEMA
+                 AND Col.TABLE_NAME = Tbl.TABLE_NAME
+                 AND Tbl.TABLE_SCHEMA = DATABASE()
+                 AND Tbl.TABLE_TYPE = "BASE TABLE"
+                 AND (   (Tbl.TABLE_NAME = "ProjectSummary" AND COLUMN_NAME = "ID")
+                      OR COLUMN_NAME = "ProjectSummaryID"
+                     );
 
       DECLARE CONTINUE HANDLER FOR NOT FOUND SET EOF = TRUE;
 
       OPEN c_Table;
       WHILE NOT EOF DO
             FETCH c_Table INTO pTableName;
-            IF NOT EOF
-               THEN SET @SQLStmt =
-                           CONCAT("DELETE FROM ",pTableName, " WHERE ",
-                                  CASE WHEN pProjectSummaryID = 0
-                                       THEN "TRUE"
-                                       ELSE CONCAT(CASE WHEN pTableName = "ProjectSummary"
-                                                        THEN "ID = "
-                                                        ELSE "ProjectSummaryID = "
-                                                    END,
-                                                   pProjectSummaryID
-                                                  )
-                                   END
-                                 );
+            IF  NOT EOF THEN
+                SET @SQLStmt =
+                    CONCAT("DELETE FROM ",pTableName,
+                           " WHERE ",
+                           CASE WHEN ProjectSummaryList = "0"
+                                THEN "TRUE"
+                                ELSE CASE WHEN pTableName = "ProjectSummary"
+                                          THEN CONCAT("ID IN (",ProjectSummaryList,")")
+                                          ELSE CONCAT("ProjectSummaryID IN (",ProjectSummaryList,")")
+                                      END
+                            END
+                          );
                      PREPARE SQLStmt FROM @SQLStmt;
                      EXECUTE SQLStmt;
             END IF;

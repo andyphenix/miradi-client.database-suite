@@ -1,5 +1,5 @@
 /*
-   Install_Import_v10.sql
+   Install_Import_v11.sql
    
    Installs the stored procedures used to import projects into the Miradi Database.
    
@@ -28,6 +28,18 @@
    **********************************************************************************************
  
    Revision History:
+   Version 11 - 2012-08-14 - Upgrade for compatibility with Miradi Database Version 47b and
+                             preparation for the Exporter.
+                           - Remove TaskSubTask from Object Sets subject to Flag 128.
+                           - Further revise and simplify REPLACE()ing special characters.
+                           - Revise the order of REPLACE()ing special characters.
+                           - I renamed ExtraDataSection.Owner to owner to conform to XML Schema.
+                             Thus, I removed the transformation of "owner" to "Owner".
+                           - Remove the code to replace extracted non-numeric attribute values with 
+                             embedded quotes. Those are /not/ embedded quotes; they are merely the
+                             quotes required by XML syntax that surround the attribute value.
+                           - Renamed SubTaskRef back to SubTaskXID. 
+                           - Move DatabaseImportDtm from ConservationProject to ProjectSummary.
    Version 10 - 2012-05-08 - Formalize the extraction of XML attribute and element values from 
                              ProjectXML in sp_Parse_XML() to be more robust based on my improved 
                              knowledge about XML (which, however improved, is still primitive). 
@@ -79,16 +91,35 @@
 */
 
 /*
-   sp_Parse_XML_v53d.sql
+   sp_Parse_XML_v57a.sql
 
    Parses raw XMPZ XML Data contained in the ProjectXML Table into distinct rows
    of element names and values.
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
    
-   Developed by David Berg for The Nature Conservancy 
-        and the Greater Conservation Community.
-        
+   **********************************************************************************************
+   
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
+
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
+
    Invocation: CALL sp_Parse_XML(). 
    
    The table ProjectXML must have been loaded from a compatible XMPZ XML data stream (see above)
@@ -108,7 +139,16 @@
    first condition in a CASE statement that tests TRUE exits the CASE statement. Changes to
    that order must be tested thoroughly before implementing them.
 
-   Revision History: 
+   Revision History:
+   Version 57a- 2012-07-01 - Remove TaskSubTask from Object Sets subject to Flag 128.
+   Version 57 - 2012-06-20 - Further revise and simplify REPLACE()ing special characters.
+   Version 56 - 2012-06-18 - Revise the order of REPLACE()ing special characters.
+   Version 55 - 2012-06-15 - I renamed ExtraDataSection.Owner to owner to conform to XML Schema.
+                             Thus, I removed the transformation of "owner" to "Owner".
+                           - Remove the code to replace extracted non-numeric attribute values with 
+                             embedded quotes. Those are /not/ embedded quotes; they are merely the
+                             quotes required by XML syntax that surround the attribute value.
+   Version 54 - 2012-06-08 - Renamed SubTaskRef back to SubTaskXID. 
    Version 53d- 2012-05-08 - ExtractValue() extracts embedded quotes from element values, but for some
                              reason (bug?) strips embedded quotes from attribute values. 
    Version 53 - 2012-04-25 - Employ the MySQL Function ExtractValue() to extract XML element values.
@@ -494,36 +534,12 @@ BEGIN
                                                            WHEN "Month" THEN "StartMonth"
                                                            WHEN "Date" THEN "StartDate"
                                                            WHEN "Key" THEN "StatusKey"
-                                                           WHEN "owner" THEN "Owner"
                                                            WHEN "ExtraDataItemName" THEN "Name"
                                                            ELSE pElementName
                                                        END, "\", ",
-                                                    
-                                                    /* Note: A MySQL bug strips embedded quotes contained
-                                                       in attribute values (but correctly extracts them
-                                                       when contained in element values (!?)). 
-                                                       Those stripped quotes are replaced (for non-numeric
-                                                       values) where noted.
-                                                    */
-                                                    
-                                                    /* Replace stripped quotes for non-numeric values. */
-                                                    CASE WHEN pElementName IN ("Id","Month","Year","Date",
-                                                                               "StartMonth","StartYear"
-                                                                              )
-                                                         THEN ""
-                                                         ELSE "CONCAT(\"\\\"\","
-                                                     END, -- *
                                                     "ExtractValue(\"",REPLACE(XML_Line_Out,"\"","\\\""),
                                                                   "</",pObjectName,">\",\"//@",pElementName,"\"",
                                                                 ")",
-                                                                
-                                                    /* Replace stripped quotes for non-numeric values. */
-                                                    CASE WHEN pElementName IN ("Id","Month","Year","Date",
-                                                                               "StartMonth","StartYear"
-                                                                              )
-                                                         THEN ""
-                                                         ELSE ",\"\\\"\")"
-                                                     END, -- *
                                                     ", ", pElementFlags, 
                                                     ")"
                                                    );
@@ -561,9 +577,25 @@ BEGIN
           
                                /* ... then Element Value */
                                
+                               /* Because of MySQL Bug 32911, you cannot use a variable to specify the
+                                  XPath expression in the function ExtractValue(). Therefore, the only 
+                                  way to dynamically set the XPath expression is through a prepared
+                                  SQL statement with the XPath expression coded directly into it. Now
+                                  comes the issue of dealing with escape sequences embedded into
+                                  Miradi ExtraDataItemValue(s). Because the escapes ('\') will be
+                                  removed when directly quoting values containing them, the values must
+                                  be placed into the ExtractValue() function without being directly quoted.
+                                  The only way I know to do that is to SELECT them into it. This is
+                                  an awfully cumbersome workaround to a bug that may someday (or not)
+                                  be fixed. It might have been easier to just do it manually, as I did
+                                  prior to Version 53.
+                               */
+                               
+                               SET @XML_Line_Out = XML_Line_Out;
                                SET @SQLStmt = 
-                                   CONCAT("SELECT ExtractValue(\"",XML_Line_Out,"\",\"/",pElementName,"\")",
-                                          "  INTO @ElementValue");
+                                   CONCAT("SELECT ExtractValue((SELECT @XML_Line_Out),\"/",pElementName,"\")",
+                                          "  INTO @ElementValue"
+                                         );
                                PREPARE SQLStmt FROM @SQLStmt;
                                EXECUTE SQLStmt;
                                DEALLOCATE PREPARE SQLStmt;
@@ -791,19 +823,19 @@ BEGIN
                    database.
                 */
 
-                REPLACE(
-                   REPLACE(
-                      REPLACE(
-                         REPLACE(
-                            REPLACE(
-                               REPLACE(
-                                  REPLACE(ElementValue,"&lt;","<"),"&gt;",">"
-                                      ),"&amp;","&"
-                                   ),"\\","\\\\"
-                                ),"&#39;","\'"
-                             ),"\"","\\\""
-                          ),"&quot;","\\\""
-                       ),
+                  REPLACE(
+                     REPLACE(
+                        REPLACE(
+                           REPLACE(
+                              REPLACE(
+                                 REPLACE(
+                                    REPLACE(ElementValue,"&lt;","<"),"&gt;",">"
+                                        ),"&amp;","&"
+                                     ),"&apos;","\'"
+                                  ),"&#39;","\'"
+                               ),"\\","\\\\"
+                            ),"&quot;","\\\""
+                         ),
 
              ElementFlags = /* Flag 2 = Element is a Pool Header Tag. 
  
@@ -881,8 +913,7 @@ BEGIN
              ElementName = TRIM(TRAILING "Ids" FROM ElementName),
              ElementFlags = CASE WHEN ElementName
                                       IN ("GroupBoxChildren",
-                                          "GroupedDiagramLink",
-                                          "TaskSubTask"
+                                          "GroupedDiagramLink"
                                          )
                                  THEN ElementFlags + 128
                                  ELSE ElementFlags
@@ -921,7 +952,12 @@ BEGIN
          INSERT INTO Trace VALUES (0,"End 32 Flags",CURRENT_TIME());
       END IF;
 
-      /* Flag 4 = Element is an Object Tag that corresponds to a database table. */
+      /* Flag 4 = Element is an Object Tag that corresponds to a database table. 
+      
+         The custom table MiradiTables is used to flag Table-equivalent Objects
+         rather than information_schema.TABLES because the latter is not indexed
+         - and cannot be indexed, thus it is unacceptably performance-insensitive.
+      */
 
       UPDATE XMLData
          SET ElementFlags = ElementFlags + 4
@@ -944,12 +980,31 @@ DELIMITER ;
 /********************************************************************************************/
 
 /*
-   sp_Iterate_XML_v55b.sql
+   sp_Iterate_XML_v58.sql
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
 
-   Developed by David Berg for The Nature Conservancy 
-        and the Greater Conservation Community.
+   **********************************************************************************************
+   
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
+
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
 
    This procedure consists of two parts. Part 1 serially reads the table XMLData,
    which contains the extracted Tag Names and Values from an XMPZ XML data stream 
@@ -977,6 +1032,11 @@ DELIMITER ;
    their attribute values from the XML data stream, and performs other miscellaneous housekeeping tasks.
 
    Revision History:
+   Version 58 - 2012-06-30 - Rename SubTask to TaskSubTask and add column SubTaskID.
+                             Adjust all corresponding views accordingly.
+                             Remove Flag 128 from TaskTubTask.
+   Version 57 - 2012-06-08 - Renamed SubTaskRef back to SubTaskXID (but it is still otherwise Flagged 128.)
+   Version 56 - 2012-06-04 - Move DatabaseImportDtm from ConservationProject to ProjectSummary.
    Version 55 - 2012-04-11 - Upgrade to be compatible with sp_Parse_XML() Version 52 and later.
                            - XML attribute values are now already extracted and appear as
                              any other column name & value pair.
@@ -1226,9 +1286,7 @@ BEGIN
       /* Cursors to select table names for ANALYZE TABLE statistics. */
 
       DECLARE c_analyze1 CURSOR FOR
-              SELECT DISTINCT
-                     CASE WHEN ElementName = "TaskSubTask" THEN "SubTask"
-                          ELSE REPLACE(
+              SELECT DISTINCT REPLACE(
                                   REPLACE(
                                      REPLACE(
                                         REPLACE(
@@ -1248,8 +1306,8 @@ BEGIN
 
       DECLARE c_analyze2 CURSOR FOR
               SELECT DISTINCT
-                     CASE WHEN TableName IN ("TaskSubTask","ActivityTask","MethodTask")
-                               THEN "SubTask"
+                     CASE WHEN TableName IN ("ActivityTask","MethodTask")
+                               THEN "TaskSubTask"
                           WHEN TableName RLIKE "^Task*|^Activity*|^Method*"
                                THEN REPLACE(REPLACE(REPLACE(TableName,"Method","Task"),
                                                             "Activity","Task"
@@ -1449,10 +1507,12 @@ Recur:
                   
                       /* Elements are in a 1/M:N relationship to their parent. */
                       
-                       IF pObjectFlags & 128 = 128  
+                       IF      pObjectFlags & 128 = 128  
                        
                            /* Elements form a recursive reference to a parent in its own Table, 
-                              e.g. Task to SubTask, and are named "Ref" .
+                              e.g. GroupBoxChildren, and are named "Ref" (except SubTaskId,
+                              which actually refers back to Task, but otherwise is characterized
+                              by Flag 128).
                            */
                            
                            THEN SET pElementName = REPLACE(pElementName,"Id","Ref");
@@ -1592,28 +1652,35 @@ Recur:
                   as subordinates to ProjectSummary during EOF processing.
                */
 
-               IF NOT (1024 IN (pObjectFlags & 1024, pParentFlags & 1024)) THEN
+               IF pObjectFlags & 1024 = 1024 THEN
                
-                  /* Flag 1024 = ProjectSummary Table.
+                    /* Flag 1024 = ProjectSummary Table.
                   
-                     If we're writing the ProjectSummary record (pObjectFlag = 1024),
-                     we will be creating ProjectSummaryID, which is an auto-increment column 
-                     in the ProjectSummary Table.
-                     
-                     If this table is an embedded child of ProjectSummary (pParentFlag = 1024), 
-                     then we don't yet know the ProjectSummaryID. In that case, the ID of this
-                     child record will be inserted into ChildRefs so ProjectSummaryID can be 
-                     retroactively into it during EOF processing.
-                     
-                  */
+                       If we're writing the ProjectSummary record (pObjectFlag = 1024),
+                       we will be creating ProjectSummaryID, which is an auto-increment column 
+                       in the ProjectSummary Table. Also populate DatabaseImportDtm.
+                   
+                       If this table is an embedded child of ProjectSummary (pParentFlag = 1024), 
+                       then we don't yet know the ProjectSummaryID. In that case, the ID of this
+                       child record will be inserted into ChildRefs so ProjectSummaryID can be 
+                       retroactively into it during EOF processing.
+                    */
                   
-                  SET pColNames = REPLACE(pColNames,"(ID","(ID,ProjectSummaryID");
+                    SET pColNames = CONCAT(pColNames, ", DatabaseImportDtm");
+                    SET pColValues = CONCAT(pColValues,",\"", CURRENT_TIMESTAMP(),"\"");
+  
+               ELSE
+                    IF pParentFlags & 1024 = FALSE THEN
+                    
+                        SET pColNames = REPLACE(pColNames,"(ID","(ID,ProjectSummaryID");
                               
-                  /* ColValues is anchored with "^" to avoid possible corruption while constructing
-                     column value list.
-                  */
+                        /* ColValues is anchored with "^" to avoid possible corruption while 
+                           constructing column value list.
+                        */
 
-                  SET pColValues = REPLACE(pColValues,"(^0",CONCAT("(^0,", @ProjectSummaryID));
+                        SET pColValues = 
+                            REPLACE(pColValues,"(^0",CONCAT("(^0,", @ProjectSummaryID));
+                    END IF;
                END IF;
 
                IF pObjectFlags & 256 = 256 THEN
@@ -1666,17 +1733,6 @@ Recur:
                   
                END IF;
 
-               IF    pObjectFlags & 512 = 512 
-               
-               THEN /* Element is the ConservationProject Object Header. */
-
-                    SET pColNames = CONCAT(pColNames, ", DatabaseImportDtm");
-                    SET pColValues = CONCAT(pColValues,",\"", CURRENT_TIMESTAMP(),"\"");
-                                         
-               ELSE SET EOF = EOF;
-
-               END IF;
-                  
                /* Prepare and execute the insert of elements into their table.
                               
                   Anchor character "^" is removed from ColValues.
@@ -1737,7 +1793,8 @@ Recur:
                SET @ColNames = "";
                SET @ColValues = "";
  
-          ELSE /* If the Object just processed is not, itself, a Table, then its elements form
+          ELSE 
+                  /* If the Object just processed is not, itself, a Table, then its elements form
                   a 1:1 relationship with, and become columns of, the Table being processed by
                   a higher-level recursion. Pass its set of column names and values back to that
                   higher-level recursion.
@@ -1898,31 +1955,31 @@ Recur:
          AND Task.ProjectSummaryID = @ProjectSummaryID;
 
       UPDATE TaskActivityMethod Task,
-             SubTask
+             TaskSubTask SubTask
              
              /* Rows in TaskActivityMethod that are linked to SubTasks are Tasks. */
              
                 LEFT JOIN CalculatedWho Who
                        ON Who.ProjectSummaryID = SubTask.ProjectSummaryID
                       AND Who.Factor = "Task"
-                      AND Who.FactorXID = SubTask.SubtaskRef
+                      AND Who.FactorXID = SubTask.SubTaskXID
                       
                 LEFT JOIN CalculatedWorkUnits CalcWork
                        ON CalcWork.ProjectSummaryID = SubTask.ProjectSummaryID
                       AND CalcWork.Factor = "Task"
-                      AND CalcWork.FactorXID = SubTask.SubtaskRef
+                      AND CalcWork.FactorXID = SubTask.SubTaskXID
                           
                 LEFT JOIN CalculatedExpense CalcExp
                        ON CalcExp.ProjectSummaryID = SubTask.ProjectSummaryID
                       AND CalcExp.Factor = "Task"
-                      AND CalcExp.FactorXID = SubTask.SubtaskRef
+                      AND CalcExp.FactorXID = SubTask.SubTaskXID
                           
          SET Task.Factor = "Task",
              Who.Factor = "Task",
              CalcWork.Factor = "Task",
              CalcExp.Factor = "Task"
        WHERE SubTask.ProjectSummaryID = Task.ProjectSummaryID
-         AND SubTask.SubtaskRef = Task.XID
+         AND SubTask.SubTaskXID = Task.XID
          AND Task.ProjectSummaryID = @ProjectSummaryID;
          
       /* Now differentiate ParentName and TableName in the ChildRefs Table to correspond 
@@ -1963,7 +2020,7 @@ Recur:
                            AND Child.TableName = "TaskProgressReport"
                           )
                           
-                LEFT JOIN (SubTask, TaskActivityMethod Task4)
+                LEFT JOIN (TaskSubTask SubTask, TaskActivityMethod Task4)
                        ON (    Task4.ProjectSummaryID = SubTask.ProjectSummaryID
                            AND Task4.XID = SubTask.TaskXID
                            AND SubTask.ID = Child.ChildID
@@ -2260,31 +2317,31 @@ Child2:
       */
 
       UPDATE StrategyActivity SA,
-             (SELECT ProjectSummaryID, MIN(ID) AS MinID
+             (SELECT StrategyID, MIN(ID) AS MinID
                 FROM StrategyActivity
                WHERE ProjectSummaryID = @ProjectSummaryID
                GROUP BY 1
              ) AS T1
          SET SA.Sequence = SA.ID - T1.MinID + 1
-       WHERE SA.ProjectSummaryID = T1.ProjectSummaryID;
+       WHERE SA.StrategyID = T1.StrategyID;
 
-      UPDATE SubTask,
-             (SELECT ProjectSummaryID, MIN(ID) AS MinID
-                FROM SubTask
+      UPDATE TaskSubTask SubTask,              -- Includes TaskSubTask, ActivityTask, MethodTask.
+             (SELECT TaskID, MIN(ID) AS MinID
+                FROM TaskSubTask
                WHERE ProjectSummaryID = @ProjectSummaryID
                GROUP BY 1
              ) AS T1
          SET SubTask.Sequence = SubTask.ID - T1.MinID + 1
-       WHERE SubTask.ProjectSummaryID = T1.ProjectSummaryID;
+       WHERE SubTask.TaskID = T1.TaskID;
 
       UPDATE IndicatorMethod IM,
-             (SELECT ProjectSummaryID, MIN(ID) AS MinID
+             (SELECT IndicatorID, MIN(ID) AS MinID
                 FROM IndicatorMethod
                WHERE ProjectSummaryID = @ProjectSummaryID
                GROUP BY 1
              ) AS T1
          SET IM.Sequence = IM.ID - T1.MinID + 1
-       WHERE IM.ProjectSummaryID = T1.ProjectSummaryID;
+       WHERE IM.IndicatorID = T1.IndicatorID;
 
 
       /* Create the components of Work Plan and Expense durations from their attribute values
@@ -2503,6 +2560,28 @@ DELIMITER ;
    (Initially coded to populate Strategy x Threat associations, later amended to also
     populate Strategy x Target, Objective x Threat/Target and Threat x Target.)
 
+   **********************************************************************************************
+   
+   Developed by David Berg for The Nature Conservancy and the greater conservation community.
+   
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   
+   This file is part of the Miradi Database Suite.
+   
+   The Miradi Database Suite is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License Version 3 as published by
+   the Free Software Foundation, or (at your option) any later version.
+
+   The Miradi Database Suite is distributed in the hope that it will be useful, but 
+   WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
+   FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License along with the 
+   Miradi Database Suite. If not, it is situated at < http://www.gnu.org/licenses/gpl.html >
+   and is incorporated herein by reference.
+   
+   **********************************************************************************************
+
    CALL sp_StrategyThreat(ProjectSummaryID, Trace)
 
         Where ProjectSummaryID represents the Project whose links tp Threats/Targets
@@ -2511,9 +2590,6 @@ DELIMITER ;
               Trace is a Boolean flag, when set to TRUE causes Trace/Debug statements 
               to be written at the beginning and end of the process and at the end of 
               each oscillation.
-
-   Developed by David Berg for The Nature Conservancy 
-        and the Greater Conservation Community.
 
    Revision History:
    Version 13 - 2012-03-05 - Consolidate ANALYZE TABLE statements.

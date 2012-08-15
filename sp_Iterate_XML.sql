@@ -1,5 +1,5 @@
 /*
-   sp_Iterate_XML_v55b.sql
+   sp_Iterate_XML_v58.sql
    
    Compatible with XMPZ XML data model http://xml.miradi.org/schema/ConservationProject/73.
 
@@ -7,7 +7,7 @@
    
    Developed by David Berg for The Nature Conservancy and the greater conservation community.
    
-   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of GPL version 3.
    
    This file is part of the Miradi Database Suite.
    
@@ -51,6 +51,11 @@
    their attribute values from the XML data stream, and performs other miscellaneous housekeeping tasks.
 
    Revision History:
+   Version 58 - 2012-06-30 - Rename SubTask to TaskSubTask and add column SubTaskID.
+                             Adjust all corresponding views accordingly.
+                             Remove Flag 128 from TaskTubTask.
+   Version 57 - 2012-06-08 - Renamed SubTaskRef back to SubTaskXID (but it is still otherwise Flagged 128.)
+   Version 56 - 2012-06-04 - Move DatabaseImportDtm from ConservationProject to ProjectSummary.
    Version 55 - 2012-04-11 - Upgrade to be compatible with sp_Parse_XML() Version 52 and later.
                            - XML attribute values are now already extracted and appear as
                              any other column name & value pair.
@@ -300,9 +305,7 @@ BEGIN
       /* Cursors to select table names for ANALYZE TABLE statistics. */
 
       DECLARE c_analyze1 CURSOR FOR
-              SELECT DISTINCT
-                     CASE WHEN ElementName = "TaskSubTask" THEN "SubTask"
-                          ELSE REPLACE(
+              SELECT DISTINCT REPLACE(
                                   REPLACE(
                                      REPLACE(
                                         REPLACE(
@@ -322,8 +325,8 @@ BEGIN
 
       DECLARE c_analyze2 CURSOR FOR
               SELECT DISTINCT
-                     CASE WHEN TableName IN ("TaskSubTask","ActivityTask","MethodTask")
-                               THEN "SubTask"
+                     CASE WHEN TableName IN ("ActivityTask","MethodTask")
+                               THEN "TaskSubTask"
                           WHEN TableName RLIKE "^Task*|^Activity*|^Method*"
                                THEN REPLACE(REPLACE(REPLACE(TableName,"Method","Task"),
                                                             "Activity","Task"
@@ -523,10 +526,12 @@ Recur:
                   
                       /* Elements are in a 1/M:N relationship to their parent. */
                       
-                       IF pObjectFlags & 128 = 128  
+                       IF      pObjectFlags & 128 = 128  
                        
                            /* Elements form a recursive reference to a parent in its own Table, 
-                              e.g. Task to SubTask, and are named "Ref" .
+                              e.g. GroupBoxChildren, and are named "Ref" (except SubTaskId,
+                              which actually refers back to Task, but otherwise is characterized
+                              by Flag 128).
                            */
                            
                            THEN SET pElementName = REPLACE(pElementName,"Id","Ref");
@@ -666,28 +671,35 @@ Recur:
                   as subordinates to ProjectSummary during EOF processing.
                */
 
-               IF NOT (1024 IN (pObjectFlags & 1024, pParentFlags & 1024)) THEN
+               IF pObjectFlags & 1024 = 1024 THEN
                
-                  /* Flag 1024 = ProjectSummary Table.
+                    /* Flag 1024 = ProjectSummary Table.
                   
-                     If we're writing the ProjectSummary record (pObjectFlag = 1024),
-                     we will be creating ProjectSummaryID, which is an auto-increment column 
-                     in the ProjectSummary Table.
-                     
-                     If this table is an embedded child of ProjectSummary (pParentFlag = 1024), 
-                     then we don't yet know the ProjectSummaryID. In that case, the ID of this
-                     child record will be inserted into ChildRefs so ProjectSummaryID can be 
-                     retroactively into it during EOF processing.
-                     
-                  */
+                       If we're writing the ProjectSummary record (pObjectFlag = 1024),
+                       we will be creating ProjectSummaryID, which is an auto-increment column 
+                       in the ProjectSummary Table. Also populate DatabaseImportDtm.
+                   
+                       If this table is an embedded child of ProjectSummary (pParentFlag = 1024), 
+                       then we don't yet know the ProjectSummaryID. In that case, the ID of this
+                       child record will be inserted into ChildRefs so ProjectSummaryID can be 
+                       retroactively into it during EOF processing.
+                    */
                   
-                  SET pColNames = REPLACE(pColNames,"(ID","(ID,ProjectSummaryID");
+                    SET pColNames = CONCAT(pColNames, ", DatabaseImportDtm");
+                    SET pColValues = CONCAT(pColValues,",\"", CURRENT_TIMESTAMP(),"\"");
+  
+               ELSE
+                    IF pParentFlags & 1024 = FALSE THEN
+                    
+                        SET pColNames = REPLACE(pColNames,"(ID","(ID,ProjectSummaryID");
                               
-                  /* ColValues is anchored with "^" to avoid possible corruption while constructing
-                     column value list.
-                  */
+                        /* ColValues is anchored with "^" to avoid possible corruption while 
+                           constructing column value list.
+                        */
 
-                  SET pColValues = REPLACE(pColValues,"(^0",CONCAT("(^0,", @ProjectSummaryID));
+                        SET pColValues = 
+                            REPLACE(pColValues,"(^0",CONCAT("(^0,", @ProjectSummaryID));
+                    END IF;
                END IF;
 
                IF pObjectFlags & 256 = 256 THEN
@@ -740,17 +752,6 @@ Recur:
                   
                END IF;
 
-               IF    pObjectFlags & 512 = 512 
-               
-               THEN /* Element is the ConservationProject Object Header. */
-
-                    SET pColNames = CONCAT(pColNames, ", DatabaseImportDtm");
-                    SET pColValues = CONCAT(pColValues,",\"", CURRENT_TIMESTAMP(),"\"");
-                                         
-               ELSE SET EOF = EOF;
-
-               END IF;
-                  
                /* Prepare and execute the insert of elements into their table.
                               
                   Anchor character "^" is removed from ColValues.
@@ -811,7 +812,8 @@ Recur:
                SET @ColNames = "";
                SET @ColValues = "";
  
-          ELSE /* If the Object just processed is not, itself, a Table, then its elements form
+          ELSE 
+                  /* If the Object just processed is not, itself, a Table, then its elements form
                   a 1:1 relationship with, and become columns of, the Table being processed by
                   a higher-level recursion. Pass its set of column names and values back to that
                   higher-level recursion.
@@ -972,31 +974,31 @@ Recur:
          AND Task.ProjectSummaryID = @ProjectSummaryID;
 
       UPDATE TaskActivityMethod Task,
-             SubTask
+             TaskSubTask SubTask
              
              /* Rows in TaskActivityMethod that are linked to SubTasks are Tasks. */
              
                 LEFT JOIN CalculatedWho Who
                        ON Who.ProjectSummaryID = SubTask.ProjectSummaryID
                       AND Who.Factor = "Task"
-                      AND Who.FactorXID = SubTask.SubtaskRef
+                      AND Who.FactorXID = SubTask.SubTaskXID
                       
                 LEFT JOIN CalculatedWorkUnits CalcWork
                        ON CalcWork.ProjectSummaryID = SubTask.ProjectSummaryID
                       AND CalcWork.Factor = "Task"
-                      AND CalcWork.FactorXID = SubTask.SubtaskRef
+                      AND CalcWork.FactorXID = SubTask.SubTaskXID
                           
                 LEFT JOIN CalculatedExpense CalcExp
                        ON CalcExp.ProjectSummaryID = SubTask.ProjectSummaryID
                       AND CalcExp.Factor = "Task"
-                      AND CalcExp.FactorXID = SubTask.SubtaskRef
+                      AND CalcExp.FactorXID = SubTask.SubTaskXID
                           
          SET Task.Factor = "Task",
              Who.Factor = "Task",
              CalcWork.Factor = "Task",
              CalcExp.Factor = "Task"
        WHERE SubTask.ProjectSummaryID = Task.ProjectSummaryID
-         AND SubTask.SubtaskRef = Task.XID
+         AND SubTask.SubTaskXID = Task.XID
          AND Task.ProjectSummaryID = @ProjectSummaryID;
          
       /* Now differentiate ParentName and TableName in the ChildRefs Table to correspond 
@@ -1037,7 +1039,7 @@ Recur:
                            AND Child.TableName = "TaskProgressReport"
                           )
                           
-                LEFT JOIN (SubTask, TaskActivityMethod Task4)
+                LEFT JOIN (TaskSubTask SubTask, TaskActivityMethod Task4)
                        ON (    Task4.ProjectSummaryID = SubTask.ProjectSummaryID
                            AND Task4.XID = SubTask.TaskXID
                            AND SubTask.ID = Child.ChildID
@@ -1334,31 +1336,31 @@ Child2:
       */
 
       UPDATE StrategyActivity SA,
-             (SELECT ProjectSummaryID, MIN(ID) AS MinID
+             (SELECT StrategyID, MIN(ID) AS MinID
                 FROM StrategyActivity
                WHERE ProjectSummaryID = @ProjectSummaryID
                GROUP BY 1
              ) AS T1
          SET SA.Sequence = SA.ID - T1.MinID + 1
-       WHERE SA.ProjectSummaryID = T1.ProjectSummaryID;
+       WHERE SA.StrategyID = T1.StrategyID;
 
-      UPDATE SubTask,
-             (SELECT ProjectSummaryID, MIN(ID) AS MinID
-                FROM SubTask
+      UPDATE TaskSubTask SubTask,             -- Includes TaskSubTask, ActivityTask, MethodTask.
+             (SELECT TaskID, MIN(ID) AS MinID
+                FROM TaskSubTask
                WHERE ProjectSummaryID = @ProjectSummaryID
                GROUP BY 1
              ) AS T1
          SET SubTask.Sequence = SubTask.ID - T1.MinID + 1
-       WHERE SubTask.ProjectSummaryID = T1.ProjectSummaryID;
+       WHERE SubTask.TaskID = T1.TaskID;
 
       UPDATE IndicatorMethod IM,
-             (SELECT ProjectSummaryID, MIN(ID) AS MinID
+             (SELECT IndicatorID, MIN(ID) AS MinID
                 FROM IndicatorMethod
                WHERE ProjectSummaryID = @ProjectSummaryID
                GROUP BY 1
              ) AS T1
          SET IM.Sequence = IM.ID - T1.MinID + 1
-       WHERE IM.ProjectSummaryID = T1.ProjectSummaryID;
+       WHERE IM.IndicatorID = T1.IndicatorID;
 
 
       /* Create the components of Work Plan and Expense durations from their attribute values

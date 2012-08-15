@@ -1,5 +1,5 @@
 /*
-   sp_Parse_XML_v53d.sql
+   sp_Parse_XML_v57a.sql
 
    Parses raw XMPZ XML Data contained in the ProjectXML Table into distinct rows
    of element names and values.
@@ -10,7 +10,7 @@
    
    Developed by David Berg for The Nature Conservancy and the greater conservation community.
    
-   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of the GPL version 3.
+   Copyright (c) 2010 - 2012 David I. Berg. Distributed under the terms of GPL version 3.
    
    This file is part of the Miradi Database Suite.
    
@@ -47,7 +47,16 @@
    first condition in a CASE statement that tests TRUE exits the CASE statement. Changes to
    that order must be tested thoroughly before implementing them.
 
-   Revision History: 
+   Revision History:
+   Version 57a- 2012-07-01 - Remove TaskSubTask from Object Sets subject to Flag 128.
+   Version 57 - 2012-06-20 - Further revise and simplify REPLACE()ing special characters.
+   Version 56 - 2012-06-18 - Revise the order of REPLACE()ing special characters.
+   Version 55 - 2012-06-15 - I renamed ExtraDataSection.Owner to owner to conform to XML Schema.
+                             Thus, I removed the transformation of "owner" to "Owner".
+                           - Remove the code to replace extracted non-numeric attribute values with 
+                             embedded quotes. Those are /not/ embedded quotes; they are merely the
+                             quotes required by XML syntax that surround the attribute value.
+   Version 54 - 2012-06-08 - Renamed SubTaskRef back to SubTaskXID. 
    Version 53d- 2012-05-08 - ExtractValue() extracts embedded quotes from element values, but for some
                              reason (bug?) strips embedded quotes from attribute values. 
    Version 53 - 2012-04-25 - Employ the MySQL Function ExtractValue() to extract XML element values.
@@ -433,36 +442,12 @@ BEGIN
                                                            WHEN "Month" THEN "StartMonth"
                                                            WHEN "Date" THEN "StartDate"
                                                            WHEN "Key" THEN "StatusKey"
-                                                           WHEN "owner" THEN "Owner"
                                                            WHEN "ExtraDataItemName" THEN "Name"
                                                            ELSE pElementName
                                                        END, "\", ",
-                                                    
-                                                    /* Note: A MySQL bug strips embedded quotes contained
-                                                       in attribute values (but correctly extracts them
-                                                       when contained in element values (!?)). 
-                                                       Those stripped quotes are replaced (for non-numeric
-                                                       values) where noted.
-                                                    */
-                                                    
-                                                    /* Replace stripped quotes for non-numeric values. */
-                                                    CASE WHEN pElementName IN ("Id","Month","Year","Date",
-                                                                               "StartMonth","StartYear"
-                                                                              )
-                                                         THEN ""
-                                                         ELSE "CONCAT(\"\\\"\","
-                                                     END, -- *
                                                     "ExtractValue(\"",REPLACE(XML_Line_Out,"\"","\\\""),
                                                                   "</",pObjectName,">\",\"//@",pElementName,"\"",
                                                                 ")",
-                                                                
-                                                    /* Replace stripped quotes for non-numeric values. */
-                                                    CASE WHEN pElementName IN ("Id","Month","Year","Date",
-                                                                               "StartMonth","StartYear"
-                                                                              )
-                                                         THEN ""
-                                                         ELSE ",\"\\\"\")"
-                                                     END, -- *
                                                     ", ", pElementFlags, 
                                                     ")"
                                                    );
@@ -500,9 +485,25 @@ BEGIN
           
                                /* ... then Element Value */
                                
+                               /* Because of MySQL Bug 32911, you cannot use a variable to specify the
+                                  XPath expression in the function ExtractValue(). Therefore, the only 
+                                  way to dynamically set the XPath expression is through a prepared
+                                  SQL statement with the XPath expression coded directly into it. Now
+                                  comes the issue of dealing with escape sequences embedded into
+                                  Miradi ExtraDataItemValue(s). Because the escapes ('\') will be
+                                  removed when directly quoting values containing them, the values must
+                                  be placed into the ExtractValue() function without being directly quoted.
+                                  The only way I know to do that is to SELECT them into it. This is
+                                  an awfully cumbersome workaround to a bug that may someday (or not)
+                                  be fixed. It might have been easier to just do it manually, as I did
+                                  prior to Version 53.
+                               */
+                               
+                               SET @XML_Line_Out = XML_Line_Out;
                                SET @SQLStmt = 
-                                   CONCAT("SELECT ExtractValue(\"",XML_Line_Out,"\",\"/",pElementName,"\")",
-                                          "  INTO @ElementValue");
+                                   CONCAT("SELECT ExtractValue((SELECT @XML_Line_Out),\"/",pElementName,"\")",
+                                          "  INTO @ElementValue"
+                                         );
                                PREPARE SQLStmt FROM @SQLStmt;
                                EXECUTE SQLStmt;
                                DEALLOCATE PREPARE SQLStmt;
@@ -730,21 +731,19 @@ BEGIN
                    database.
                 */
 
-                REPLACE(
-                   REPLACE(
-                      REPLACE(
-                         REPLACE(
-                            REPLACE(
-                               REPLACE(
-                                  REPLACE(
-                                     REPLACE(ElementValue,"&lt;","<"),"&gt;",">"
-                                         ),"&amp;","&"
-                                      ),"\\","\\\\"
-                                   ),"&apos;","\'"
-                                ),"&#39;","\'"
-                             ),"\"","\\\""
-                          ),"&quot;","\\\""
-                       ),
+                  REPLACE(
+                     REPLACE(
+                        REPLACE(
+                           REPLACE(
+                              REPLACE(
+                                 REPLACE(
+                                    REPLACE(ElementValue,"&lt;","<"),"&gt;",">"
+                                        ),"&amp;","&"
+                                     ),"&apos;","\'"
+                                  ),"&#39;","\'"
+                               ),"\\","\\\\"
+                            ),"&quot;","\\\""
+                         ),
 
              ElementFlags = /* Flag 2 = Element is a Pool Header Tag. 
  
@@ -822,8 +821,7 @@ BEGIN
              ElementName = TRIM(TRAILING "Ids" FROM ElementName),
              ElementFlags = CASE WHEN ElementName
                                       IN ("GroupBoxChildren",
-                                          "GroupedDiagramLink",
-                                          "TaskSubTask"
+                                          "GroupedDiagramLink"
                                          )
                                  THEN ElementFlags + 128
                                  ELSE ElementFlags
