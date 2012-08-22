@@ -526,12 +526,10 @@ Recur:
                   
                       /* Elements are in a 1/M:N relationship to their parent. */
                       
-                       IF      pObjectFlags & 128 = 128  
+                       IF  pObjectFlags & 128 = 128  
                        
                            /* Elements form a recursive reference to a parent in its own Table, 
-                              e.g. GroupBoxChildren, and are named "Ref" (except SubTaskId,
-                              which actually refers back to Task, but otherwise is characterized
-                              by Flag 128).
+                              e.g. GroupBoxChildren, and are named "Ref".
                            */
                            
                            THEN SET pElementName = REPLACE(pElementName,"Id","Ref");
@@ -620,8 +618,8 @@ Recur:
                                                        leading ObjectName from the Element Name. However,
                                                        because some instances of Element Name are identical
                                                        to their Object Name (e.g. ProjectLocationProjectLocation)
-                                                       ... and TRIM() or REPLACE() removes/replaces /all/
-                                                       occurrences of the trim/replace string, we can't use 
+                                                       - and TRIM() or REPLACE() removes/replaces /all/
+                                                       occurrences of the trim/replace string - we can't use 
                                                        TRIM() or REPLACE() to perform this operation. Thus, 
                                                        it becomes unnecessarily complicated.
                                                     */

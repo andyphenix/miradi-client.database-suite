@@ -264,6 +264,24 @@ CREATE VIEW v_GoalRelevantIndicator AS
 
 
 
+ 
+DROP TABLE IF EXISTS MiradiTables;
+CREATE TABLE MiradiTables
+(TableName VARCHAR(255),
+ TableType CHAR(5),
+ INDEX (TableName)
+)
+ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+INSERT INTO MiradiTables
+       SELECT TABLE_NAME, RIGHT(Table_Type,5)
+         FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = (SELECT DATABASE());
+
+ANALYZE TABLE MiradiTables;
+
+
+
 /*
    sp_DeleteProject_v3.sql
 

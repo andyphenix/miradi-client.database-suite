@@ -294,7 +294,7 @@
    Version 01 - 2010-12-xx - Initial Version.
 */
 
-USE Miradi;
+USE Miradi47;
 
 DELIMITER $$
 
@@ -1196,7 +1196,7 @@ DELIMITER ;
    Version 01 - 2010-12-27 - Initial Version.
 */
 
-USE Miradi;
+USE Miradi47;
 
 DELIMITER $$
 
@@ -1510,9 +1510,7 @@ Recur:
                        IF      pObjectFlags & 128 = 128  
                        
                            /* Elements form a recursive reference to a parent in its own Table, 
-                              e.g. GroupBoxChildren, and are named "Ref" (except SubTaskId,
-                              which actually refers back to Task, but otherwise is characterized
-                              by Flag 128).
+                              e.g. GroupBoxChildren, and are named "Ref".
                            */
                            
                            THEN SET pElementName = REPLACE(pElementName,"Id","Ref");
@@ -2616,7 +2614,7 @@ DELIMITER ;
    Version 01 - 2011-02-21 - Initial Version.
 */
 
-USE Miradi;
+USE Miradi47;
 
 DELIMITER $$
 

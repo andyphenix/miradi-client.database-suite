@@ -1317,7 +1317,7 @@ CREATE TABLE Measurement                  -- Objects-32
 
 
 DROP TABLE IF EXISTS IndicatorMeasurement;              -- View v_IndicatorMeasurement follows
-CREATE TABLE IndicatorMeasurement                       -- CREATE FUNCTION RATING();
+CREATE TABLE IndicatorMeasurement                       -- CREATE FUNCTION RATING()
 (ID INTEGER AUTO_INCREMENT PRIMARY KEY,
  ProjectSummaryID INTEGER NOT NULL,
  IndicatorID INTEGER NOT NULL DEFAULT 0,
